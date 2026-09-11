@@ -89,6 +89,8 @@ class GuardController extends Controller
             'pageTitle' => 'Guard Setup - Secure360',
             'organisationId' => $orgId,
             'nextCode' => $nextCode,
+            'isEdit' => false,
+            'guard' => null,
         ], 'layouts/admin');
     }
 
@@ -159,6 +161,7 @@ class GuardController extends Controller
                 'phone' => $phone ?: null,
                 'employee_code' => $employeeCode,
                 'password_hash' => $passwordHash,
+                'photo_url' => $photoUrl,
                 'status' => $status,
             ]);
 
@@ -179,12 +182,18 @@ class GuardController extends Controller
     }
 
     /**
-     * Show edit form for guard
+     * Show edit form for guard (opens Guard Setup in edit mode with prefilled details)
      */
     public function editForm(Request $request = null, Response $response = null, array $params = []): void
     {
         $orgId = Auth::organisationId() ?? 1;
         $guardId = (int)($params['id'] ?? 0);
+
+        if ($guardId <= 0) {
+            $this->setFlash('error', 'Invalid guard ID.');
+            $this->redirect('/admin/guards');
+            return;
+        }
 
         $guardModel = new Guard();
         $guard = $guardModel->findByGuardId($guardId, $orgId);
@@ -195,20 +204,28 @@ class GuardController extends Controller
             return;
         }
 
-        $this->render('admin/guards/edit', [
+        $this->render('admin/guards/setup', [
             'pageTitle' => 'Edit Guard - ' . $guard['full_name'],
             'organisationId' => $orgId,
             'guard' => $guard,
+            'isEdit' => true,
+            'nextCode' => $guard['employee_code'] ?? 'GRD-101',
         ], 'layouts/admin');
     }
 
     /**
-     * Update guard profile and credentials
+     * Update existing guard profile and credentials
      */
     public function updateGuard(Request $request = null, Response $response = null, array $params = []): void
     {
         $orgId = Auth::organisationId() ?? 1;
         $guardId = (int)($params['id'] ?? 0);
+
+        if ($guardId <= 0) {
+            $this->setFlash('error', 'Invalid guard ID.');
+            $this->redirect('/admin/guards');
+            return;
+        }
 
         $guardModel = new Guard();
         $guard = $guardModel->findByGuardId($guardId, $orgId);
@@ -220,6 +237,7 @@ class GuardController extends Controller
         }
 
         $fullName = trim((string)$this->request->input('full_name', ''));
+        $email = trim((string)$this->request->input('email', ''));
         $phone = trim((string)$this->request->input('phone', ''));
         $status = (int)$this->request->input('status', 0);
         $password = (string)$this->request->input('password', '');
@@ -230,44 +248,82 @@ class GuardController extends Controller
             return;
         }
 
-        $userModel = new User();
-        $userData = [
-            'full_name' => $fullName,
-            'phone' => $phone ?: null,
-            'status' => $status,
-        ];
-
-        if ($password !== '') {
-            $userData['password_hash'] = Auth::hashPassword($password);
+        if ($email === '') {
+            $this->setFlash('error', 'Email address is required.');
+            $this->redirect("/admin/guards/{$guardId}/edit");
+            return;
         }
 
-        $userModel->update((int)$guard['user_id'], $userData);
+        $userModel = new User();
 
-        // Photo upload check
-        $guardData = ['status' => $status];
-        if (isset($_FILES['photo']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
-            $tmpPath = $_FILES['photo']['tmp_name'];
-            $origName = $_FILES['photo']['name'];
-            $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
-            $allowed = ['jpg', 'jpeg', 'png', 'webp'];
-
-            if (in_array($ext, $allowed, true)) {
-                $uploadDir = ROOT_PATH . '/public/uploads/guards';
-                if (!is_dir($uploadDir)) {
-                    mkdir($uploadDir, 0755, true);
-                }
-                $filename = 'guard_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-                $target = $uploadDir . '/' . $filename;
-                if (move_uploaded_file($tmpPath, $target)) {
-                    $guardData['photo_url'] = 'uploads/guards/' . $filename;
-                }
+        // Check if email changed and is taken by another account
+        if (strtolower($email) !== strtolower($guard['email'])) {
+            $existing = $userModel->findByEmail($email);
+            if ($existing && (int)$existing['id'] !== (int)$guard['user_id']) {
+                $this->setFlash('error', 'A user with this email address already exists.');
+                $this->redirect("/admin/guards/{$guardId}/edit");
+                return;
             }
         }
 
-        $guardModel->update($guardId, $guardData);
+        if ($password !== '' && strlen($password) < 6) {
+            $this->setFlash('error', 'Password must be at least 6 characters.');
+            $this->redirect("/admin/guards/{$guardId}/edit");
+            return;
+        }
 
-        $this->setFlash('success', "Guard profile updated successfully.");
-        $this->redirect('/admin/guards');
+        try {
+            $userModel->beginTransaction();
+
+            $userData = [
+                'full_name' => $fullName,
+                'email' => $email,
+                'phone' => $phone ?: null,
+                'status' => $status,
+            ];
+
+            if ($password !== '') {
+                $userData['password_hash'] = Auth::hashPassword($password);
+            }
+
+            $guardData = [
+                'status' => $status,
+            ];
+
+            // Photo upload check
+            if (isset($_FILES['photo']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
+                $tmpPath = $_FILES['photo']['tmp_name'];
+                $origName = $_FILES['photo']['name'];
+                $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+                $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+
+                if (in_array($ext, $allowed, true)) {
+                    $uploadDir = ROOT_PATH . '/public/uploads/guards';
+                    if (!is_dir($uploadDir)) {
+                        mkdir($uploadDir, 0755, true);
+                    }
+                    $filename = 'guard_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                    $target = $uploadDir . '/' . $filename;
+                    if (move_uploaded_file($tmpPath, $target)) {
+                        $photoUrl = 'uploads/guards/' . $filename;
+                        $guardData['photo_url'] = $photoUrl;
+                        $userData['photo_url'] = $photoUrl;
+                    }
+                }
+            }
+
+            $userModel->update((int)$guard['user_id'], $userData);
+            $guardModel->update($guardId, $guardData);
+
+            $userModel->commit();
+
+            $this->setFlash('success', "Guard '{$fullName}' updated successfully.");
+            $this->redirect('/admin/guards');
+        } catch (\Throwable $e) {
+            $userModel->rollBack();
+            $this->setFlash('error', 'Error updating guard: ' . $e->getMessage());
+            $this->redirect("/admin/guards/{$guardId}/edit");
+        }
     }
 
     /**
