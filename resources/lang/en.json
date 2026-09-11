@@ -1,0 +1,13 @@
+{
+  "app_name": "Secure360",
+  "welcome": "Welcome to Secure360 Operations",
+  "sign_in": "Sign In",
+  "sign_out": "Sign Out",
+  "dashboard": "Dashboard",
+  "clients": "Clients",
+  "sites": "Sites",
+  "guards": "Guards",
+  "contracts": "Contracts",
+  "attendance": "Attendance",
+  "settings": "Settings"
+}

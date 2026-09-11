@@ -1,0 +1,128 @@
+# ==============================================================================
+# SECURE360 - ROOT GITIGNORE
+# Multi-stack rules for Core PHP, MySQL, Apache/WAMP, and Flutter Mobile
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment & Secret Credentials (CRITICAL)
+# ------------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+.env.backup
+*.env
+!.env.example
+
+# ------------------------------------------------------------------------------
+# 2. Local Storage, Logs, and Uploads
+# ------------------------------------------------------------------------------
+storage/logs/*
+!storage/logs/.gitkeep
+storage/cache/*
+!storage/cache/.gitkeep
+storage/uploads/guards/*
+!storage/uploads/guards/.gitkeep
+storage/uploads/organisations/*
+!storage/uploads/organisations/.gitkeep
+storage/uploads/documents/*
+!storage/uploads/documents/.gitkeep
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Temporary scratch and debug scripts
+scratch/
+
+# ------------------------------------------------------------------------------
+# 3. PHP & Composer Dependencies
+# ------------------------------------------------------------------------------
+vendor/
+composer.lock
+node_modules/
+
+# ------------------------------------------------------------------------------
+# 4. Database Dumps & Backups
+# (Versioned migrations in database/ are tracked; raw local dumps are excluded)
+# ------------------------------------------------------------------------------
+*.sql.gz
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+local_dump.sql
+backup_*.sql
+
+# ------------------------------------------------------------------------------
+# 5. Flutter & Dart Build Artifacts (Mobile Client)
+# ------------------------------------------------------------------------------
+.dart_tool/
+mobile/.dart_tool/
+build/
+mobile/build/
+.flutter-plugins
+mobile/.flutter-plugins
+.flutter-plugins-dependencies
+mobile/.flutter-plugins-dependencies
+.packages
+mobile/.packages
+.pub-cache/
+mobile/.pub-cache/
+.pub/
+mobile/.pub/
+coverage/
+mobile/coverage/
+
+# Application packages & binaries
+*.apk
+*.aab
+*.ipa
+*.app
+*.x86_64
+
+# ------------------------------------------------------------------------------
+# 6. Android Platform & SDK Local Files (Machine-Specific)
+# ------------------------------------------------------------------------------
+**/android/local.properties
+mobile/android/local.properties
+**/android/.gradle/
+mobile/android/.gradle/
+**/android/app/debug/
+mobile/android/app/debug/
+**/android/app/profile/
+mobile/android/app/profile/
+**/android/app/release/
+mobile/android/app/release/
+**/android/captures/
+mobile/android/captures/
+**/android/key.properties
+*.keystore
+*.jks
+
+# ------------------------------------------------------------------------------
+# 7. IDE & Editor Files (IntelliJ, Android Studio, VS Code)
+# ------------------------------------------------------------------------------
+*.iml
+**/*.iml
+.idea/
+**/.idea/
+.vscode/
+**/.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.settings/
+.buildpath
+
+# ------------------------------------------------------------------------------
+# 8. Operating System & Machine Specific Files
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+*.tmp
+*.temp
+*.log

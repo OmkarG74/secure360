@@ -1,0 +1,110 @@
+# AGENTS.md - Secure360 AI Pair Programming Guidelines & Invariants
+
+This file defines the mandatory architectural rules, coding standards, and invariant constraints for any AI agent or developer working on **Secure360**.
+
+---
+
+## 1. Two-Developer Collaboration Model
+
+Secure360 is built cooperatively by two developers:
+- **Developer 1 (Web / Backend Lead)**: Manages the Core PHP web application, Superadmin and Organisation Admin portals, MySQL schema/migrations, and REST API routing/controllers in the project root.
+- **Developer 2 (Mobile Client Lead)**: Manages the Flutter Guard mobile application located exclusively inside the `mobile/` directory.
+
+### Key Collaboration Principles:
+1. **Separation of Workspaces**:
+   - Web & Admin portal changes take place in `app/`, `resources/views/`, `routes/web.php`, and `public/`.
+   - Guard Mobile changes take place in `mobile/`.
+   - REST API contracts and endpoints bridge the two layers via `routes/api.php`, `app/Controllers/Api/*`, and `docs/API_CONTRACT.md`.
+2. **Contract-First API Evolution**:
+   - Flutter **NEVER** connects directly to MySQL. All communication must occur through versioned REST APIs under `/api/v1/*`.
+   - Any modification to API request bodies or response structures must be updated in `docs/API_CONTRACT.md` before code changes are merged.
+3. **Database Schema as Single Source of Truth**:
+   - The MySQL database `secure360_v2` is shared by both web and mobile via the API.
+   - Any database modification requires an incremental numbered migration script in `database/migrations/`.
+
+---
+
+## 2. Non-Negotiable Technology Stack Rules
+
+- **Pure Core PHP Only**: Use Core PHP (PHP 8.2+). **STRICTLY NEVER** install or introduce Laravel, Symfony, CodeIgniter, or any external full-stack PHP frameworks.
+- **Autoloading**: Rely on `App\Core\Autoloader` (PSR-4 compliant) mapping `App\` to `app/`. Do not introduce arbitrary Composer packages unless specifically instructed.
+- **Database Engine**: Centralized PDO MySQL prepared statements via `App\Core\Database` connecting to `secure360_v2`. **NEVER** write raw string-concatenated SQL queries that permit SQL injection.
+- **Web Server Compatibility**: The application must run cleanly on standard Apache / WAMP / XAMPP environments under both root domains and subdirectories (e.g., `http://localhost/Secure360/`).
+- **Apache MultiViews Disabled**: `.htaccess` must include `Options -MultiViews -Indexes +FollowSymLinks` to prevent Apache content-negotiation conflicts with REST API routes.
+- **Frontend**: Plain HTML5, Vanilla CSS3 (using custom variables in `style.css`), and Vanilla JavaScript. Do NOT install TailwindCSS or npm build tools.
+- **Mobile Client**: Pure Flutter/Dart project in `mobile/`. Supports dynamic API base URLs via `--dart-define=API_BASE_URL=...`.
+
+---
+
+## 3. Database Schema Invariants (`secure360_v2`)
+
+The database `secure360_v2` is the single source of truth:
+1. `roles` (`super_admin`, `admin`, `guard`)
+2. `organizations` (tenant root, spelled with 'z')
+3. `users` (credentials for Superadmins, Admins, and Guards)
+4. `customers` (represents client accounts)
+5. `sites` (physical posts; foreign key `customer_id` &rarr; 1 Client has Many Sites)
+6. `guards` (linked to `users.id`)
+7. `contracts` (bound to `customer_id` and `site_id`)
+8. `contract_shifts` (shift schedules per contract)
+9. `contract_guard_assignments` (allocates Guard to Site, Contract, Shift)
+10. `attendance` (check-in/out timestamps and GPS coordinates)
+11. `guard_live_locations` (real-time telemetry)
+12. `selfies` (photo verification)
+13. `activities` (audit trail)
+14. `api_tokens` (Bearer tokens for Flutter API authentication)
+15. `notifications` (system alerts)
+
+### Status Conventions:
+- Standard status column is `TINYINT`:
+  - `0 = active / open`
+  - `1 = inactive / completed`
+  - `2 = deleted / cancelled`
+
+---
+
+## 4. Multi-Tenancy & Data Isolation Rules
+
+- **Tenant Root**: `organizations` is the tenant root.
+- **Superadmin Boundary**: Superadmins operate globally across all organisations (`organization_id = NULL`). Superadmin routes MUST use `SuperAdminMiddleware`.
+- **Organisation Admin Boundary**: Organisation Admins operate exclusively within their own organisation. Every query managing customers, sites, guards, contracts, or attendance MUST be scoped by `organization_id`.
+- **Tenant Leakage Prevention**: Never display, query, update, or delete data belonging to another organisation. Always verify tenant ownership using `TenantMiddleware` and `Model::findByTenant()`.
+
+---
+
+## 5. API & Mobile Integration Invariants
+
+- **Standard JSON Payload**: All API endpoints must return standardized JSON payloads:
+  - **Success**:
+    ```json
+    {
+      "success": true,
+      "message": "Human-readable confirmation",
+      "data": { ... },
+      "status_code": 200
+    }
+    ```
+  - **Failure**:
+    ```json
+    {
+      "success": false,
+      "message": "Human-readable error explanation",
+      "data": null,
+      "errors": { ... },
+      "status_code": 400
+    }
+    ```
+- **Consistent User & Guard Keys**: Guard login and profile endpoints must always provide unified `user` and `guard` objects containing `id`, `user_id`, `guard_id`, `name`, `full_name`, `email`, `employee_code`, `organization_id`, and `role`.
+- **Safe Flutter Deserialization**: Mobile response parsing must use defensive validation (`_parseResponse<T>()`), safely handling `null` fields and non-JSON HTML error responses without Dart type-cast crashes.
+- **Authentication**: Bearer tokens are stored as SHA-256 hashes in `api_tokens`. Plain 64-character tokens are sent in `Authorization: Bearer <token>`.
+- **CORS Support**: `Router.php` handles preflight `OPTIONS` requests automatically.
+- **Local Network Support**: The API must support connections from Android emulators (`10.0.2.2`) and physical Wi-Fi devices.
+
+---
+
+## 6. Collaboration & Version Control Invariants
+
+- **No Secrets in Git**: Never commit `.env` or production passwords. Always use `.env.example`.
+- **Ignore Platform Local Files**: Never commit machine-specific paths (e.g. `mobile/android/local.properties`, `*.iml`, `.idea/`, `.vscode/`).
+- **Database Migrations**: Every database change requires a numbered SQL script in `database/migrations/` (e.g. `002_add_field.sql`).
+- **Contract Integrity**: Any API payload change must be reflected in `docs/API_CONTRACT.md`.

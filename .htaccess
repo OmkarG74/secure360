@@ -1,0 +1,22 @@
+# ==============================================================================
+# SECURE360 ROOT .HTACCESS (Apache / WAMP / XAMPP)
+# Forwards all incoming requests into the public/ directory
+# ==============================================================================
+
+Options -MultiViews -Indexes +FollowSymLinks
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Prevent direct access to hidden files and sensitive directories
+    RewriteRule ^(\.git|\.env|app|routes|resources|database|storage|tests|docs) - [F,L]
+
+    # Forward all requests to the public directory
+    RewriteCond %{REQUEST_URI} !public/
+    RewriteRule ^(.*)$ public/$1 [L,QSA]
+</IfModule>
+
+<IfModule !mod_rewrite.c>
+    # Fallback redirect if mod_rewrite is disabled
+    RedirectMatch 301 ^/$ /public/
+</IfModule>
