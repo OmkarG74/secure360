@@ -142,6 +142,14 @@ class GuardAuthController extends Controller
             return;
         }
 
+        $orgName = $guard['organization_name'] ?? null;
+        if (empty($orgName) && !empty($guard['organization_id'])) {
+            $db = \App\Core\Database::getConnection();
+            $orgStmt = $db->prepare("SELECT name FROM organizations WHERE id = :id LIMIT 1");
+            $orgStmt->execute(['id' => (int)$guard['organization_id']]);
+            $orgName = $orgStmt->fetchColumn() ?: 'Apex Security';
+        }
+
         $guardProfile = [
             'id' => (int)($guard['user_id'] ?? $guard['id'] ?? 0),
             'guard_id' => (int)$guard['guard_id'],
@@ -152,6 +160,7 @@ class GuardAuthController extends Controller
             'phone' => $guard['phone'],
             'employee_code' => $guard['employee_code'],
             'organization_id' => (int)$guard['organization_id'],
+            'organization_name' => $orgName,
             'photo_url' => $guard['photo_url'] ?? null,
             'role' => 'guard',
         ];
@@ -159,10 +168,10 @@ class GuardAuthController extends Controller
         $this->json([
             'success' => true,
             'message' => 'Guard profile retrieved successfully',
-            'data' => [
+            'data' => array_merge($guardProfile, [
                 'user' => $guardProfile,
                 'guard' => $guardProfile,
-            ],
+            ]),
             'status_code' => 200,
         ]);
     }

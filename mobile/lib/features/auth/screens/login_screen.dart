@@ -3,7 +3,9 @@ import '../../../core/services/api_service.dart';
 import '../../duty/screens/home_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final String? expiredMessage;
+
+  const LoginScreen({super.key, this.expiredMessage});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -14,6 +16,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController(text: 'password123');
   bool _isLoading = false;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.expiredMessage != null) {
+      _errorMessage = widget.expiredMessage;
+    }
+  }
 
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
@@ -124,11 +134,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFE2E8F0)),
-                    boxShadow: [
+                    boxShadow: const [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Color(0x0A000000),
                         blurRadius: 10,
-                        offset: const Offset(0, 4),
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),

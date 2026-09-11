@@ -56,6 +56,7 @@ class GuardLocationController extends Controller
             'success' => true,
             'message' => 'Live location telemetry recorded',
             'data' => [
+                'id' => $id,
                 'location_id' => $id,
                 'recorded_at' => date('Y-m-d H:i:s'),
             ],
@@ -79,8 +80,37 @@ class GuardLocationController extends Controller
         $imagePath = (string)($body['image_path'] ?? '');
         $attendanceId = isset($body['attendance_id']) ? (int)$body['attendance_id'] : null;
 
+        // Support direct multipart file uploads (image / photo)
+        if (!empty($_FILES['image']['tmp_name']) || !empty($_FILES['photo']['tmp_name'])) {
+            $file = !empty($_FILES['image']['tmp_name']) ? $_FILES['image'] : $_FILES['photo'];
+            $uploadDir = dirname(__DIR__, 4) . '/public/uploads/selfies/';
+            if (!is_dir($uploadDir)) {
+                @mkdir($uploadDir, 0755, true);
+            }
+            $ext = strtolower(pathinfo($file['name'] ?? 'selfie.jpg', PATHINFO_EXTENSION)) ?: 'jpg';
+            $fileName = 'selfie_' . (int)$guard['guard_id'] . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+            if (move_uploaded_file($file['tmp_name'], $uploadDir . $fileName)) {
+                $imagePath = 'uploads/selfies/' . $fileName;
+            }
+        } elseif (!empty($body['image_base64'])) {
+            $base64 = $body['image_base64'];
+            if (preg_match('/^data:image\/(\w+);base64,/', $base64)) {
+                $base64 = substr($base64, strpos($base64, ',') + 1);
+            }
+            $decoded = base64_decode($base64);
+            if ($decoded !== false) {
+                $uploadDir = dirname(__DIR__, 4) . '/public/uploads/selfies/';
+                if (!is_dir($uploadDir)) {
+                    @mkdir($uploadDir, 0755, true);
+                }
+                $fileName = 'selfie_' . (int)$guard['guard_id'] . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.jpg';
+                file_put_contents($uploadDir . $fileName, $decoded);
+                $imagePath = 'uploads/selfies/' . $fileName;
+            }
+        }
+
         if (empty($imagePath)) {
-            $this->json(['success' => false, 'message' => 'image_path is required', 'status_code' => 422], 422);
+            $this->json(['success' => false, 'message' => 'image_path, image file, or image_base64 is required', 'status_code' => 422], 422);
             return;
         }
 
@@ -92,11 +122,23 @@ class GuardLocationController extends Controller
             $attendanceId
         );
 
+        // If an attendance_id was linked, update the attendance row's selfie_id
+        if ($attendanceId && $id) {
+            $db = \App\Core\Database::getConnection();
+            $upStmt = $db->prepare("UPDATE attendance SET selfie_id = :selfie_id WHERE id = :att_id AND guard_id = :guard_id");
+            $upStmt->execute([
+                'selfie_id' => $id,
+                'att_id' => $attendanceId,
+                'guard_id' => (int)$guard['guard_id'],
+            ]);
+        }
+
         $this->json([
             'success' => true,
             'message' => 'Selfie verification recorded',
             'data' => [
                 'selfie_id' => $id,
+                'image_path' => $imagePath,
             ],
             'status_code' => 201,
         ], 201);

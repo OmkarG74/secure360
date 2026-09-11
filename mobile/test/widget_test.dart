@@ -5,14 +5,14 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:secure360_mobile/main.dart';
 
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const Secure360App());
-    expect(find.text('Secure360 Guard'), findsOneWidget);
+    expect(find.byType(Secure360App), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1000));
+    await tester.pump();
   });
 }

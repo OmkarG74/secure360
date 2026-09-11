@@ -38,6 +38,8 @@ class GuardAttendanceController extends Controller
         $address = (string)($body['address'] ?? '');
         $notes = (string)($body['notes'] ?? '');
 
+        $selfieId = isset($body['selfie_id']) ? (int)$body['selfie_id'] : null;
+
         // Check if guard already has an open check-in
         $attendanceModel = new Attendance();
         $openAttendance = $attendanceModel->getOpenAttendance($guardId);
@@ -55,13 +57,24 @@ class GuardAttendanceController extends Controller
         }
 
         $db = Database::getConnection();
+
+        // If site_id was not explicitly passed, attempt to deduce it from assignment
+        if (empty($siteId) && !empty($assignmentId)) {
+            $cgaStmt = $db->prepare("SELECT site_id FROM contract_guard_assignments WHERE id = :cga_id AND organization_id = :org_id LIMIT 1");
+            $cgaStmt->execute(['cga_id' => $assignmentId, 'org_id' => $orgId]);
+            $foundSite = $cgaStmt->fetchColumn();
+            if ($foundSite) {
+                $siteId = (int)$foundSite;
+            }
+        }
+
         $stmt = $db->prepare(
             "INSERT INTO attendance 
              (organization_id, guard_id, assignment_id, site_id, check_in_at, 
-              check_in_latitude, check_in_longitude, check_in_address, status, notes, created_at)
+              check_in_latitude, check_in_longitude, check_in_address, selfie_id, status, notes, created_at)
              VALUES 
              (:org_id, :guard_id, :assignment_id, :site_id, NOW(), 
-              :lat, :lng, :addr, 0, :notes, NOW())"
+              :lat, :lng, :addr, :selfie_id, 0, :notes, NOW())"
         );
         $stmt->execute([
             'org_id' => $orgId,
@@ -71,6 +84,7 @@ class GuardAttendanceController extends Controller
             'lat' => $latitude,
             'lng' => $longitude,
             'addr' => $address,
+            'selfie_id' => $selfieId,
             'notes' => $notes,
         ]);
 
@@ -83,6 +97,7 @@ class GuardAttendanceController extends Controller
                 'attendance_id' => $attendanceId,
                 'guard_id' => $guardId,
                 'site_id' => $siteId,
+                'selfie_id' => $selfieId,
                 'check_in_at' => date('Y-m-d H:i:s'),
                 'status' => 'checked_in',
             ],
@@ -108,7 +123,7 @@ class GuardAttendanceController extends Controller
         $attendanceModel = new Attendance();
         $attendanceId = isset($body['attendance_id']) ? (int)$body['attendance_id'] : null;
 
-        if ($attendanceId === null) {
+        if (!$attendanceId) {
             // Auto-detect open attendance
             $open = $attendanceModel->getOpenAttendance($guardId);
             if (!$open) {
@@ -136,7 +151,7 @@ class GuardAttendanceController extends Controller
                  check_out_longitude = :lng, 
                  check_out_address = :addr, 
                  status = 1, 
-                 notes = CASE WHEN :notes <> '' THEN CONCAT(IFNULL(notes, ''), ' | Checkout: ', :notes) ELSE notes END,
+                 notes = CASE WHEN :notes_chk <> '' THEN CONCAT(IFNULL(notes, ''), ' | Checkout: ', :notes_val) ELSE notes END,
                  updated_at = NOW()
              WHERE id = :id AND guard_id = :guard_id"
         );
@@ -144,7 +159,8 @@ class GuardAttendanceController extends Controller
             'lat' => $latitude,
             'lng' => $longitude,
             'addr' => $address,
-            'notes' => $notes,
+            'notes_chk' => $notes,
+            'notes_val' => $notes,
             'id' => $attendanceId,
             'guard_id' => $guardId,
         ]);

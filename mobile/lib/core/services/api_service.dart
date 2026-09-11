@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
@@ -56,6 +58,12 @@ class ApiService {
   static const String _tokenKey = 'secure360_guard_token';
   static const String _userKey = 'secure360_guard_user';
 
+  /// Global navigator key for handling session expiration (401)
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+  /// Global session expiration hook
+  static void Function()? onSessionExpired;
+
   /// Save auth credentials in device storage
   static Future<void> saveAuthSession(String token, Map<String, dynamic> user) async {
     final prefs = await SharedPreferences.getInstance();
@@ -83,7 +91,7 @@ class ApiService {
     return null;
   }
 
-  /// Clear session on logout
+  /// Clear session on logout or session expiration
   static Future<void> clearAuthSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
@@ -108,6 +116,12 @@ class ApiService {
     http.Response response,
     T Function(dynamic)? fromJsonT,
   ) {
+    // Global 401 Session Expiration Handler
+    if (response.statusCode == 401) {
+      clearAuthSession();
+      onSessionExpired?.call();
+    }
+
     if (response.body.isEmpty) {
       return ApiResponse<T>(
         success: response.statusCode >= 200 && response.statusCode < 300,
@@ -229,6 +243,42 @@ class ApiService {
     }
   }
 
+  /// Guard Profile
+  static Future<ApiResponse<Map<String, dynamic>>> getProfile() async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.profileEndpoint}');
+      final headers = await _buildHeaders();
+      final response = await http.get(url, headers: headers).timeout(ApiConfig.connectTimeout);
+
+      final apiResponse = _parseResponse<Map<String, dynamic>>(
+        response,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{},
+      );
+
+      if (apiResponse.success && apiResponse.data != null) {
+        // Update cached user details
+        final token = await getToken();
+        if (token != null) {
+          await saveAuthSession(token, apiResponse.data!);
+        }
+      }
+
+      return apiResponse;
+    } on http.ClientException catch (e) {
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: 'Cannot connect to backend: ${e.message}',
+        statusCode: 503,
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: 'Failed to fetch profile: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
   /// Fetch Guard Duty Assignments (Today's Posts)
   static Future<ApiResponse<List<dynamic>>> getAssignments() async {
     try {
@@ -266,6 +316,8 @@ class ApiService {
   /// Check In on Site
   static Future<ApiResponse<Map<String, dynamic>>> checkIn({
     required int siteId,
+    int? assignmentId,
+    int? selfieId,
     required double latitude,
     required double longitude,
     String? address,
@@ -274,17 +326,25 @@ class ApiService {
     try {
       final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.checkInEndpoint}');
       final headers = await _buildHeaders();
+      final bodyMap = <String, dynamic>{
+        'site_id': siteId,
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address ?? '',
+        'notes': notes ?? '',
+      };
+      if (assignmentId != null) {
+        bodyMap['assignment_id'] = assignmentId;
+      }
+      if (selfieId != null) {
+        bodyMap['selfie_id'] = selfieId;
+      }
+
       final response = await http
           .post(
             url,
             headers: headers,
-            body: jsonEncode({
-              'site_id': siteId,
-              'latitude': latitude,
-              'longitude': longitude,
-              'address': address ?? '',
-              'notes': notes ?? '',
-            }),
+            body: jsonEncode(bodyMap),
           )
           .timeout(ApiConfig.connectTimeout);
 
@@ -303,7 +363,7 @@ class ApiService {
 
   /// Check Out of Site
   static Future<ApiResponse<Map<String, dynamic>>> checkOut({
-    required int attendanceId,
+    int? attendanceId,
     required double latitude,
     required double longitude,
     String? address,
@@ -312,17 +372,21 @@ class ApiService {
     try {
       final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.checkOutEndpoint}');
       final headers = await _buildHeaders();
+      final bodyMap = <String, dynamic>{
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address ?? '',
+        'notes': notes ?? '',
+      };
+      if (attendanceId != null) {
+        bodyMap['attendance_id'] = attendanceId;
+      }
+
       final response = await http
           .post(
             url,
             headers: headers,
-            body: jsonEncode({
-              'attendance_id': attendanceId,
-              'latitude': latitude,
-              'longitude': longitude,
-              'address': address ?? '',
-              'notes': notes ?? '',
-            }),
+            body: jsonEncode(bodyMap),
           )
           .timeout(ApiConfig.connectTimeout);
 
@@ -367,6 +431,148 @@ class ApiService {
       return ApiResponse<List<dynamic>>(
         success: false,
         message: 'Failed to fetch attendance history: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Check if guard has an active (open) attendance session
+  /// Returns the open attendance record map if On-Duty, or null if Off-Duty
+  static Future<Map<String, dynamic>?> getActiveDuty() async {
+    final response = await getAttendanceHistory();
+    if (!response.success || response.data == null || response.data!.isEmpty) {
+      return null;
+    }
+
+    final latest = response.data!.first;
+    if (latest is Map) {
+      final map = Map<String, dynamic>.from(latest);
+      final status = map['status'];
+      final checkOutAt = map['check_out_at'];
+      // status == 0 and check_out_at is null means currently On-Duty
+      if ((status == 0 || status == '0') && (checkOutAt == null || checkOutAt.toString().isEmpty)) {
+        return map;
+      }
+    }
+    return null;
+  }
+
+  /// Submit periodic live location telemetry
+  static Future<ApiResponse<Map<String, dynamic>>> submitLocation({
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+    double? speed,
+    double? heading,
+    double? batteryLevel,
+    bool isCharging = false,
+    String? activityType = 'patrol',
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.locationTelemetryEndpoint}');
+      final headers = await _buildHeaders();
+      final response = await http
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode({
+              'latitude': latitude,
+              'longitude': longitude,
+              'accuracy': accuracy,
+              'speed': speed,
+              'heading': heading,
+              'battery_level': batteryLevel,
+              'is_charging': isCharging,
+              'activity_type': activityType ?? 'patrol',
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return _parseResponse<Map<String, dynamic>>(
+        response,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{},
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: 'Location submission failed: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Submit selfie verification image
+  /// Supports file upload via multipart/form-data or base64 payload
+  static Future<ApiResponse<Map<String, dynamic>>> submitSelfie({
+    required String filePath,
+    int? attendanceId,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.selfieUploadEndpoint}');
+      final token = await getToken();
+
+      final request = http.MultipartRequest('POST', url);
+      if (token != null && token.isNotEmpty) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+      request.headers['Accept'] = 'application/json';
+
+      if (attendanceId != null) {
+        request.fields['attendance_id'] = attendanceId.toString();
+      }
+
+      final file = File(filePath);
+      if (await file.exists()) {
+        request.files.add(
+          await http.MultipartFile.fromPath('image', filePath),
+        );
+      } else {
+        return ApiResponse<Map<String, dynamic>>(
+          success: false,
+          message: 'Selfie image file does not exist at $filePath',
+          statusCode: 400,
+        );
+      }
+
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 20));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      return _parseResponse<Map<String, dynamic>>(
+        response,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{},
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: 'Selfie upload failed: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Fetch guard notifications
+  static Future<ApiResponse<List<dynamic>>> getNotifications() async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.notificationsEndpoint}');
+      final headers = await _buildHeaders();
+      final response = await http.get(url, headers: headers).timeout(ApiConfig.connectTimeout);
+
+      return _parseResponse<List<dynamic>>(
+        response,
+        (data) {
+          if (data is Map && data['notifications'] is List) {
+            return data['notifications'] as List<dynamic>;
+          }
+          if (data is List) {
+            return data;
+          }
+          return <dynamic>[];
+        },
+      );
+    } catch (e) {
+      return ApiResponse<List<dynamic>>(
+        success: false,
+        message: 'Failed to fetch notifications: $e',
         statusCode: 500,
       );
     }
