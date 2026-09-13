@@ -17,7 +17,6 @@ $inactiveCount = $inactiveCount ?? 0;
     <div class="page-header">
         <div>
             <h1 class="page-header-title">Clients &amp; Accounts</h1>
-            <p class="page-header-desc">Manage client organizations and their assigned security sites.</p>
         </div>
     </div>
 
@@ -42,10 +41,10 @@ $inactiveCount = $inactiveCount ?? 0;
         </div>
 
         <!-- Right: Search Field and Register Client Button -->
-        <div class="toolbar-actions">
-            <form method="GET" action="<?= url('/admin/clients-sites') ?>" class="toolbar-search">
+        <div class="toolbar-actions" style="display: flex; align-items: center; gap: 0.875rem; flex-wrap: wrap;">
+            <form method="GET" action="<?= url('/admin/clients-sites') ?>" class="toolbar-search" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
                 <input type="hidden" name="status" value="<?= e($statusFilter) ?>">
-                <div class="input-icon-wrapper">
+                <div class="input-icon-wrapper" style="width: 320px;">
                     <svg class="input-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                     <input type="text" name="search" class="form-control" placeholder="Search clients or sites..." value="<?= e($searchQuery) ?>">
                 </div>
@@ -54,7 +53,7 @@ $inactiveCount = $inactiveCount ?? 0;
                 <?php endif; ?>
             </form>
 
-            <a href="<?= url('/admin/clients/register') ?>" class="btn btn-primary" style="height: 40px; padding: 0 1.25rem;">
+            <a href="<?= url('/admin/clients/register') ?>" class="btn btn-primary" style="height: 44px; padding: 0 1.25rem; border-radius: 10px; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; font-weight: 600;">
                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
                 Register Client
             </a>
@@ -71,7 +70,7 @@ $inactiveCount = $inactiveCount ?? 0;
                 <p style="font-size: 1rem; font-weight: 600; color: #334155; margin-bottom: 0.25rem;">No clients match your filter criteria.</p>
                 <p style="font-size: 0.8125rem; color: #94a3b8; margin-bottom: 1.5rem;">Try adjusting your search query or status filter.</p>
                 <a href="<?= url('/admin/clients/register') ?>" class="btn btn-outline" style="font-size: 0.8125rem;">
-                    + Register First Client
+                    Register First Client
                 </a>
             </div>
         <?php else: ?>
@@ -183,16 +182,16 @@ $inactiveCount = $inactiveCount ?? 0;
                 </table>
             </div>
 
-            <!-- Pagination Footer -->
-            <div class="table-footer">
-                <div>
-                    Showing <strong><?= count($customers) ?></strong> of <strong><?= $totalCount ?></strong> <?= $totalCount === 1 ? 'client' : 'clients' ?>
-                </div>
-                <div class="pagination-controls">
-                    <button class="btn-pagination" disabled>Previous</button>
-                    <button class="btn-pagination" disabled>Next</button>
-                </div>
-            </div>
+            <!-- Standardized Pagination Footer (Reference: Attendance Page) -->
+            <?php App\Core\View::component('components/pagination', [
+                'currentPage' => $currentPage ?? 1,
+                'totalRecords' => $totalRecords ?? count($customers),
+                'pageSize' => $pageSize ?? 10,
+                'queryParams' => array_filter([
+                    'status' => $statusFilter !== 'all' ? $statusFilter : null,
+                    'search' => $searchQuery ?: null,
+                ]),
+            ]); ?>
         <?php endif; ?>
     </div>
 </div>

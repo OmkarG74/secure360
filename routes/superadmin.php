@@ -41,4 +41,5 @@ $router->group([
 
     // 3. Platform Settings & Audit Logs
     $router->get('/settings', [SettingsController::class, 'index']);
+    $router->post('/settings', [SettingsController::class, 'update']);
 });
