@@ -7,9 +7,11 @@ import '../../../core/services/api_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/utils/time_formatter.dart';
 import '../../attendance/screens/check_in_screen.dart';
+import '../../attendance/screens/check_out_screen.dart';
 import '../../attendance/screens/attendance_history_screen.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import '../../profile/screens/profile_screen.dart';
+
 
 class HomeDashboardScreen extends StatefulWidget {
   const HomeDashboardScreen({super.key});
@@ -29,8 +31,8 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
-  bool _isCheckingOut = false;
   Timer? _dutyTicker;
+
 
   // Dedicated Selfie tab state
   File? _tabSelfieFile;
@@ -215,140 +217,111 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     }
   }
 
-  /// Check-out modal dialog with real GPS acquisition and checkout API submission
-  Future<void> _handleCheckOut() async {
-    if (_isCheckingOut || _activeDuty == null) return;
-
-    final notesController = TextEditingController();
-
-    final shouldProceed = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF2F2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.exit_to_app, color: Color(0xFFDC2626), size: 22),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Confirm Duty Check-Out',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'You are checking out of duty from ${_activeDuty?['site_name'] ?? 'your post'}.\nDevice GPS will be logged and live telemetry will be terminated.',
-              style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: notesController,
-              maxLines: 2,
-              decoration: InputDecoration(
-                hintText: 'Handover remarks (e.g. Relieved by Guard Sarah; All perimeter secure)',
-                hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFDC2626),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 0,
-              ),
-              child: const Text('Confirm & Check Out', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (shouldProceed != true) return;
-
-    setState(() => _isCheckingOut = true);
-
-    // Acquire current GPS position for checkout record
-    double lat = 0.0;
-    double lng = 0.0;
+  /// Validate shift window for client UX and disabled states
+  Map<String, dynamic> _validateShiftWindow(String startTime, String endTime) {
     try {
-      final pos = await LocationService.getCurrentLocation();
-      if (pos != null) {
-        lat = pos.latitude;
-        lng = pos.longitude;
+      final now = DateTime.now();
+      final startParts = startTime.split(':').map(int.parse).toList();
+      final endParts = endTime.split(':').map(int.parse).toList();
+
+      final nowMinutes = now.hour * 60 + now.minute;
+      final startMinutes = startParts[0] * 60 + startParts[1];
+      final endMinutes = endParts[0] * 60 + endParts[1];
+
+      final formattedStart = TimeFormatter.formatTime(startTime);
+
+      if (startMinutes <= endMinutes) {
+        if (nowMinutes < startMinutes) {
+          return {
+            'allowed': false,
+            'state': 'before_shift',
+            'message': 'Your shift starts at $formattedStart.',
+            'badge': 'Starts at $formattedStart',
+          };
+        }
+        if (nowMinutes > endMinutes) {
+          return {
+            'allowed': false,
+            'state': 'after_shift',
+            'message': 'Your assigned shift has ended.',
+            'badge': 'Shift Ended',
+          };
+        }
+        return {
+          'allowed': true,
+          'state': 'active',
+          'message': 'Shift is active.',
+          'badge': 'Shift Active',
+        };
       }
-    } catch (e) {
-      debugPrint('[CheckOut] GPS warning: $e');
-    }
 
-    final attendanceId = _activeDuty?['id'] != null ? int.tryParse(_activeDuty!['id'].toString()) : null;
+      // Overnight shift (e.g. 22:00 to 06:00)
+      if (nowMinutes >= startMinutes || nowMinutes <= endMinutes) {
+        return {
+          'allowed': true,
+          'state': 'active',
+          'message': 'Shift is active.',
+          'badge': 'Shift Active',
+        };
+      }
 
-    final response = await ApiService.checkOut(
-      attendanceId: attendanceId,
-      latitude: lat,
-      longitude: lng,
-      notes: notesController.text.trim(),
-    );
+      final midpoint = endMinutes + ((startMinutes - endMinutes) ~/ 2);
+      if (nowMinutes <= midpoint) {
+        return {
+          'allowed': false,
+          'state': 'after_shift',
+          'message': 'Your assigned shift has ended.',
+          'badge': 'Shift Ended',
+        };
+      }
 
-    if (!mounted) return;
-
-    if (response.success) {
-      LocationService.stopLiveTracking();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white, size: 20),
-              SizedBox(width: 8),
-              Text('Duty completed successfully. Status set to Off-Duty.'),
-            ],
-          ),
-          backgroundColor: Color(0xFF10B981),
-        ),
-      );
-
-      await _loadDashboardData();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Checkout failed: ${response.message}'),
-          backgroundColor: const Color(0xFFDC2626),
-        ),
-      );
-    }
-
-    if (mounted) {
-      setState(() => _isCheckingOut = false);
+      return {
+        'allowed': false,
+        'state': 'before_shift',
+        'message': 'Your shift starts at $formattedStart.',
+        'badge': 'Starts at $formattedStart',
+      };
+    } catch (_) {
+      return {'allowed': true, 'state': 'active', 'message': 'Shift is active.', 'badge': 'Assigned Shift'};
     }
   }
+
+  /// Check-out verification flow requiring fresh selfie, GPS validation, and API submission
+  Future<void> _handleCheckOut() async {
+    if (_activeDuty == null) return;
+
+
+    final rawId = _activeDuty?['id'];
+    final attendanceId = rawId != null ? (rawId is int ? rawId : int.tryParse(rawId.toString())) : null;
+    if (attendanceId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No active duty session ID found to check out from.'),
+          backgroundColor: Color(0xFFDC2626),
+        ),
+      );
+      return;
+    }
+
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CheckOutScreen(
+          attendanceId: attendanceId,
+          siteName: _activeDuty?['site_name'] ?? 'Duty Post',
+          siteId: _activeDuty?['site_id'] != null ? int.tryParse(_activeDuty!['site_id'].toString()) : null,
+          siteLatitude: _activeDuty?['site_latitude'] != null ? double.tryParse(_activeDuty!['site_latitude'].toString()) : null,
+          siteLongitude: _activeDuty?['site_longitude'] != null ? double.tryParse(_activeDuty!['site_longitude'].toString()) : null,
+          checkInTime: _activeDuty?['check_in_at']?.toString(),
+          shiftName: _activeDuty?['shift_name']?.toString(),
+        ),
+      ),
+    );
+
+    if (result == true || mounted) {
+      await _loadDashboardData();
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -508,6 +481,17 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   // TAB 0: HOME
   // ==========================================
   Widget _buildHomeTab(BuildContext context, String guardName, String badgeCode, String orgName, bool isOnDuty) {
+    double? activeDistance;
+    bool isWithinDutyArea = true;
+    if (isOnDuty && _livePosition != null && _activeDuty?['site_latitude'] != null && _activeDuty?['site_longitude'] != null) {
+      final sLat = double.tryParse(_activeDuty!['site_latitude'].toString());
+      final sLng = double.tryParse(_activeDuty!['site_longitude'].toString());
+      if (sLat != null && sLng != null) {
+        activeDistance = Geolocator.distanceBetween(_livePosition!.latitude, _livePosition!.longitude, sLat, sLng);
+        isWithinDutyArea = activeDistance <= 150.0;
+      }
+    }
+
     return RefreshIndicator(
       onRefresh: _loadDashboardData,
       child: ListView(
@@ -605,7 +589,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF86EFAC), width: 1.5),
+                border: Border.all(
+                  color: isWithinDutyArea ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5),
+                  width: 1.5,
+                ),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x1410B981),
@@ -669,24 +656,63 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       ),
                       const SizedBox(width: 6),
                       const Text(
-                        'Live GPS Telemetry: Transmitting every 30s',
+                        'Live GPS Status: Active • Transmitting',
                         style: TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+
+                  // Geofence status indicator
+                  if (activeDistance != null) ...[
+                    if (isWithinDutyArea) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.verified, size: 16, color: Color(0xFF16A34A)),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Within Assigned Area (${activeDistance.round()}m from post)',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF166534), fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      Container(
+                        margin: const EdgeInsets.only(top: 6),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFDC2626)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Outside Assigned Area (${activeDistance.round()}m away). Return to post.',
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF991B1B), fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+
                   const SizedBox(height: 18),
                   SizedBox(
                     width: double.infinity,
                     height: 46,
                     child: ElevatedButton.icon(
-                      onPressed: _isCheckingOut ? null : _handleCheckOut,
-                      icon: _isCheckingOut
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.exit_to_app, color: Colors.white, size: 18),
-                      label: Text(
-                        _isCheckingOut ? 'Checking Out...' : 'Check-Out of Duty Post',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                      onPressed: _handleCheckOut,
+                      icon: const Icon(Icons.exit_to_app, color: Colors.white, size: 18),
+                      label: const Text(
+                        'Check-Out of Duty Post',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
+
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFDC2626),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -805,13 +831,31 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
               final siteId = asgn['site_id'] ?? 1;
               final assignmentId = asgn['id'] ?? asgn['assignment_id'];
 
+              final shiftStatus = _validateShiftWindow(startTime, endTime);
+              final isShiftActive = shiftStatus['allowed'] == true;
+
+              double? distToSite;
+              bool isWithinSite = true;
+              if (_livePosition != null && asgn['latitude'] != null && asgn['longitude'] != null) {
+                final sLat = double.tryParse(asgn['latitude'].toString());
+                final sLng = double.tryParse(asgn['longitude'].toString());
+                if (sLat != null && sLng != null) {
+                  distToSite = Geolocator.distanceBetween(_livePosition!.latitude, _livePosition!.longitude, sLat, sLng);
+                  isWithinSite = distToSite <= 150.0;
+                }
+              }
+
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(
+                    color: isShiftActive
+                        ? (isWithinSite ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5))
+                        : const Color(0xFFE2E8F0),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -819,12 +863,19 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          shiftName,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2563EB),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isShiftActive ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            shiftName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isShiftActive ? const Color(0xFF2563EB) : const Color(0xFF64748B),
+                            ),
                           ),
                         ),
                         Text(
@@ -842,11 +893,95 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                         color: Color(0xFF0F172A),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      siteAddress,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                    if (siteAddress.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        siteAddress,
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                      ),
+                    ],
+
+                    // Shift status & Geofence pills
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        // Shift status pill
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isShiftActive ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: isShiftActive ? const Color(0xFFBBF7D0) : const Color(0xFFFECACA)),
+                          ),
+                          child: Text(
+                            shiftStatus['badge'] as String,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isShiftActive ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                            ),
+                          ),
+                        ),
+
+                        // Geofence status pill (if GPS location is available)
+                        if (distToSite != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isWithinSite ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: isWithinSite ? const Color(0xFFBBF7D0) : const Color(0xFFFECACA)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isWithinSite ? Icons.check : Icons.location_off,
+                                  size: 12,
+                                  color: isWithinSite ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isWithinSite ? 'Within Post (${distToSite.round()}m)' : 'Outside Post (${distToSite.round()}m)',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: isWithinSite ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
+
+                    // OUTSIDE-GEOFENCE WARNING (if outside area)
+                    if (isShiftActive && !isWithinSite && distToSite != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFDC2626)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'You are outside your assigned post area (${distToSite.round()}m away). Move closer to check in.',
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF991B1B), fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 16),
 
                     if (isOnDuty) ...[
@@ -875,27 +1010,43 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                         width: double.infinity,
                         height: 44,
                         child: ElevatedButton.icon(
-                          onPressed: () async {
-                            final result = await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => CheckInScreen(
-                                  siteId: siteId is int ? siteId : int.parse(siteId.toString()),
-                                  siteName: siteName,
-                                  siteAddress: siteAddress,
-                                  assignmentId: assignmentId != null ? (assignmentId is int ? assignmentId : int.tryParse(assignmentId.toString())) : null,
-                                  shiftName: shiftName,
-                                ),
-                              ),
-                            );
+                          onPressed: !isShiftActive
+                              ? null
+                              : () async {
+                                  final result = await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => CheckInScreen(
+                                        siteId: siteId is int ? siteId : int.parse(siteId.toString()),
+                                        siteName: siteName,
+                                        siteAddress: siteAddress,
+                                        assignmentId: assignmentId != null ? (assignmentId is int ? assignmentId : int.tryParse(assignmentId.toString())) : null,
+                                        shiftName: shiftName,
+                                        siteLatitude: asgn['latitude'] != null ? double.tryParse(asgn['latitude'].toString()) : null,
+                                        siteLongitude: asgn['longitude'] != null ? double.tryParse(asgn['longitude'].toString()) : null,
+                                        startTime: startTime,
+                                        endTime: endTime,
+                                      ),
+                                    ),
+                                  );
 
-                            if (result == true || mounted) {
-                              _loadDashboardData();
-                            }
-                          },
-                          icon: const Icon(Icons.qr_code_scanner, size: 18, color: Colors.white),
-                          label: const Text('Check In to Duty', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  if (result == true || mounted) {
+                                    _loadDashboardData();
+                                  }
+                                },
+                          icon: Icon(
+                            isShiftActive ? Icons.login : Icons.schedule,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          label: Text(
+                            !isShiftActive
+                                ? (shiftStatus['message'] as String)
+                                : 'Check In to Duty Post',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF10B981),
+                            disabledBackgroundColor: const Color(0xFF94A3B8),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             elevation: 0,
                           ),
@@ -911,6 +1062,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       ),
     );
   }
+
 
   // ==========================================
   // TAB 1: SHIFT
@@ -1055,36 +1207,55 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                         ),
                       ),
                     ] else ...[
-                      SizedBox(
-                        width: double.infinity,
-                        height: 42,
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            final result = await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => CheckInScreen(
-                                  siteId: siteId is int ? siteId : int.parse(siteId.toString()),
-                                  siteName: siteName,
-                                  siteAddress: siteAddress,
-                                  assignmentId: assignmentId != null ? (assignmentId is int ? assignmentId : int.tryParse(assignmentId.toString())) : null,
-                                  shiftName: shiftName,
-                                ),
-                              ),
-                            );
+                      Builder(
+                        builder: (_) {
+                          final shiftStatus = _validateShiftWindow(startTime, endTime);
+                          final isShiftActive = shiftStatus['allowed'] == true;
 
-                            if (result == true || mounted) {
-                              _loadDashboardData();
-                            }
-                          },
-                          icon: const Icon(Icons.login, size: 16, color: Colors.white),
-                          label: const Text('Check In to Duty Post', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF10B981),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                        ),
+                          return SizedBox(
+                            width: double.infinity,
+                            height: 44,
+                            child: ElevatedButton.icon(
+                              onPressed: !isShiftActive
+                                  ? null
+                                  : () async {
+                                      final result = await Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => CheckInScreen(
+                                            siteId: siteId is int ? siteId : int.parse(siteId.toString()),
+                                            siteName: siteName,
+                                            siteAddress: siteAddress,
+                                            assignmentId: assignmentId != null ? (assignmentId is int ? assignmentId : int.tryParse(assignmentId.toString())) : null,
+                                            shiftName: shiftName,
+                                            siteLatitude: asgn['latitude'] != null ? double.tryParse(asgn['latitude'].toString()) : null,
+                                            siteLongitude: asgn['longitude'] != null ? double.tryParse(asgn['longitude'].toString()) : null,
+                                            startTime: startTime,
+                                            endTime: endTime,
+                                          ),
+                                        ),
+                                      );
+
+                                      if (result == true || mounted) {
+                                        _loadDashboardData();
+                                      }
+                                    },
+                              icon: Icon(isShiftActive ? Icons.login : Icons.schedule, size: 16, color: Colors.white),
+                              label: Text(
+                                !isShiftActive ? (shiftStatus['message'] as String) : 'Check In to Duty Post',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF10B981),
+                                disabledBackgroundColor: const Color(0xFF94A3B8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                elevation: 0,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ],
+
                   ],
                 ),
               );
