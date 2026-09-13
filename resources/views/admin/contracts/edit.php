@@ -1,14 +1,16 @@
 <?php
 /**
- * Create Service Contract View
+ * Edit Service Contract View
  * Secure360 Enterprise SaaS UI: Two balanced vertical cards (Contract Details + Guard Assignments)
- * Strictly matches Register Client design language.
+ * Strictly matches Register Client design language and Secure360 standards.
  */
+$contract = $contract ?? [];
 $customers = $customers ?? [];
 $sites = $sites ?? [];
 $guards = $guards ?? [];
-$contractCode = $contractCode ?? 'CTR-' . date('Y') . '-' . rand(100, 999);
 $existingAssignments = $existingAssignments ?? [];
+$contractId = (int)($contract['id'] ?? 0);
+$requiredGuards = max(1, (int)($contract['required_guard_count'] ?? 4));
 ?>
 
 <div class="page-container">
@@ -21,14 +23,14 @@ $existingAssignments = $existingAssignments ?? [];
     <!-- Page Header -->
     <div class="page-header" style="margin-bottom: 1.75rem;">
         <div>
-            <h1 class="page-header-title">Create Contract</h1>
-            <p class="page-header-desc">Enter contract details and assign guards to sites and shifts.</p>
+            <h1 class="page-header-title">Edit Contract</h1>
+            <p class="page-header-desc">Modify contract parameters, coverage specifications, and guard assignments.</p>
         </div>
     </div>
 
     <?php App\Core\View::component('components/alerts'); ?>
 
-    <form method="POST" action="<?= url('/admin/contracts/create') ?>" id="contractForm" onsubmit="return validateContractForm()">
+    <form method="POST" action="<?= url('/admin/contracts/' . $contractId . '/edit') ?>" id="contractForm" onsubmit="return validateContractForm()">
         <?= csrf_field() ?>
 
         <div class="register-layout-grid">
@@ -55,13 +57,15 @@ $existingAssignments = $existingAssignments ?? [];
                             <select name="customer_id" id="customerSelect" class="form-select" required onchange="onCustomerChange()">
                                 <option value="">-- Select Client --</option>
                                 <?php foreach ($customers as $c): ?>
-                                    <option value="<?= $c['id'] ?>"><?= e($c['name']) ?> (<?= e($c['client_code']) ?>)</option>
+                                    <option value="<?= $c['id'] ?>" <?= ((int)($contract['customer_id'] ?? 0) === (int)$c['id']) ? 'selected' : '' ?>>
+                                        <?= e($c['name']) ?> (<?= e($c['client_code']) ?>)
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Contract Number / Code</label>
-                            <input type="text" name="contract_code" class="form-control" value="<?= e($contractCode) ?>" readonly style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 600; background: #f8fafc;">
+                            <input type="text" name="contract_code" class="form-control" value="<?= e($contract['contract_code'] ?? '') ?>" readonly style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 600; background: #f8fafc;">
                         </div>
                     </div>
 
@@ -69,24 +73,24 @@ $existingAssignments = $existingAssignments ?? [];
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
                         <div class="form-group">
                             <label class="form-label">Start Date <span class="required-star">*</span></label>
-                            <input type="date" name="start_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                            <input type="date" name="start_date" class="form-control" value="<?= e($contract['start_date'] ?? date('Y-m-d')) ?>" required>
                         </div>
                         <div class="form-group">
                             <label class="form-label">End Date</label>
-                            <input type="date" name="end_date" class="form-control" value="<?= date('Y-m-d', strtotime('+1 year')) ?>">
+                            <input type="date" name="end_date" class="form-control" value="<?= e($contract['end_date'] ?? '') ?>">
                         </div>
                     </div>
 
                     <!-- Required Guards -->
                     <div class="form-group">
                         <label class="form-label">Required Guards <span class="required-star">*</span></label>
-                        <input type="number" id="requiredGuardsInput" name="required_guard_count" class="form-control" value="4" min="1" max="100" required oninput="onRequiredGuardsChange()" style="font-weight: 600;">
+                        <input type="number" id="requiredGuardsInput" name="required_guard_count" class="form-control" value="<?= $requiredGuards ?>" min="1" max="100" required oninput="onRequiredGuardsChange()" style="font-weight: 600;">
                     </div>
 
                     <!-- Contract Notes / Special Instructions -->
                     <div class="form-group">
                         <label class="form-label">Contract Notes / Special Instructions</label>
-                        <textarea name="extra_notes" class="form-control" rows="3" placeholder="24/7 security, night patrol, access control, client requests, etc."></textarea>
+                        <textarea name="extra_notes" class="form-control" rows="3" placeholder="24/7 security, night patrol, access control, client requests, etc."><?= e($contract['extra_notes'] ?? '') ?></textarea>
                     </div>
 
                     <!-- Primary Site / Location -->
@@ -95,7 +99,7 @@ $existingAssignments = $existingAssignments ?? [];
                         <select name="site_id" id="siteSelect" class="form-select" required onchange="onContractSiteChange()">
                             <option value="">-- Select Site --</option>
                             <?php foreach ($sites as $s): ?>
-                                <option value="<?= $s['id'] ?>" data-customer="<?= $s['customer_id'] ?>">
+                                <option value="<?= $s['id'] ?>" data-customer="<?= $s['customer_id'] ?>" <?= ((int)($contract['site_id'] ?? 0) === (int)$s['id']) ? 'selected' : '' ?>>
                                     <?= e($s['site_name']) ?> (<?= e($s['site_code']) ?>)
                                 </option>
                             <?php endforeach; ?>
@@ -147,7 +151,7 @@ $existingAssignments = $existingAssignments ?? [];
             </a>
             <button type="submit" id="submitBtn" class="btn btn-primary" style="min-width: 180px;">
                 <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
-                Create Contract
+                Update Contract
             </button>
         </div>
     </form>

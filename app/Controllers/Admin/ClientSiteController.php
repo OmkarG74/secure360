@@ -66,9 +66,20 @@ class ClientSiteController extends Controller
             return true;
         });
 
-        // Attach sites
+        $filteredValues = array_values($filtered);
+        $totalFiltered = count($filteredValues);
+        $page = max(1, (int)$this->request->query('page', 1));
+        $pageSize = 10;
+        $totalPages = max(1, (int)ceil($totalFiltered / $pageSize));
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+        $offset = ($page - 1) * $pageSize;
+        $pagedCustomers = array_slice($filteredValues, $offset, $pageSize);
+
+        // Attach sites to paged customers
         $customersWithSites = [];
-        foreach ($filtered as $customer) {
+        foreach ($pagedCustomers as $customer) {
             $customer['sites'] = $customerModel->getSites((int)$customer['id'], $orgId);
             $customersWithSites[] = $customer;
         }
@@ -85,6 +96,10 @@ class ClientSiteController extends Controller
             'totalCount' => $totalCount,
             'activeCount' => $activeCount,
             'inactiveCount' => $inactiveCount,
+            'currentPage' => $page,
+            'pageSize' => $pageSize,
+            'totalRecords' => $totalFiltered,
+            'totalPages' => $totalPages,
         ], 'layouts/admin');
     }
 

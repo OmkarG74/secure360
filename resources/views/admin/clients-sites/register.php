@@ -7,12 +7,11 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
 ?>
 
 <div class="page-container">
-    <!-- Breadcrumb Navigation -->
-    <div class="app-breadcrumb">
-        <a href="<?= url('/admin/clients-sites') ?>">Clients &amp; Sites</a>
-        <span class="breadcrumb-separator">/</span>
-        <span class="breadcrumb-current">Register Client</span>
-    </div>
+    <!-- Form Back Navigation -->
+    <a href="<?= url('/admin/clients-sites') ?>" class="form-back-nav">
+        <svg fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/></svg>
+        <span>Back to Clients &amp; Sites</span>
+    </a>
 
     <!-- Page Header -->
     <div class="page-header" style="margin-bottom: 1.75rem;">
@@ -49,7 +48,7 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
                         </label>
                         <div class="input-icon-wrapper">
                             <svg class="input-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-                            <input type="text" name="name" class="form-control" placeholder="e.g. Metro Commercial Plaza" required>
+                            <input type="text" name="name" class="form-control" placeholder="Metro Commercial Plaza" required>
                         </div>
                     </div>
 
@@ -73,7 +72,7 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
                         <label class="form-label">Contact Person</label>
                         <div class="input-icon-wrapper">
                             <svg class="input-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                            <input type="text" name="contact_person" class="form-control" placeholder="e.g. Sarah Jenkins">
+                            <input type="text" name="contact_person" class="form-control" placeholder="Sarah Jenkins">
                         </div>
                     </div>
 
@@ -120,7 +119,7 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
                     </div>
                     <button type="button" id="btnAddSite" class="btn btn-outline btn-sm" style="color: #2563eb; border-color: #bfdbfe; background: #eff6ff;">
                         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
-                        + Add Site
+                        Add Site
                     </button>
                 </div>
 
@@ -145,11 +144,11 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
                                 <label class="form-label">
                                     Site Name <span class="required-star">*</span>
                                 </label>
-                                <input type="text" name="sites[0][site_name]" class="form-control" placeholder="e.g. Main Gate / Tower A" required>
+                                <input type="text" name="sites[0][site_name]" class="form-control" placeholder="Main Gate / Tower A" required>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Site Code</label>
-                                <input type="text" name="sites[0][site_code]" class="form-control" placeholder="e.g. SITE-MAIN-01" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+                                <input type="text" name="sites[0][site_code]" class="form-control" placeholder="SITE-MAIN-01" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
                             </div>
                         </div>
 
@@ -157,7 +156,7 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
                         <div class="site-grid-row-2">
                             <div class="form-group">
                                 <label class="form-label">Site Specific Address / Gate Details</label>
-                                <input type="text" name="sites[0][site_address]" class="form-control" placeholder="e.g. 500 Commerce Way, Gate 1 South">
+                                <input type="text" name="sites[0][site_address]" class="form-control" placeholder="500 Commerce Way, Gate 1 South">
                             </div>
                         </div>
 
@@ -242,18 +241,18 @@ document.addEventListener('DOMContentLoaded', function () {
                     <label class="form-label">
                         Site Name <span class="required-star">*</span>
                     </label>
-                    <input type="text" name="sites[\${newIndex}][site_name]" class="form-control" placeholder="e.g. North Warehouse / Gate 2" required>
+                    <input type="text" name="sites[\${newIndex}][site_name]" class="form-control" placeholder="North Warehouse / Gate 2" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Site Code</label>
-                    <input type="text" name="sites[\${newIndex}][site_code]" class="form-control" placeholder="e.g. SITE-NORTH-02" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+                    <input type="text" name="sites[\${newIndex}][site_code]" class="form-control" placeholder="SITE-NORTH-02" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
                 </div>
             </div>
 
             <div class="site-grid-row-2">
                 <div class="form-group">
                     <label class="form-label">Site Specific Address / Gate Details</label>
-                    <input type="text" name="sites[\${newIndex}][site_address]" class="form-control" placeholder="e.g. 510 Commerce Way, Bay 3">
+                    <input type="text" name="sites[\${newIndex}][site_address]" class="form-control" placeholder="510 Commerce Way, Bay 3">
                 </div>
             </div>
 

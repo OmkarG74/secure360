@@ -6,6 +6,7 @@ namespace App\Controllers\Admin;
 
 use App\Core\Auth;
 use App\Core\Controller;
+use App\Core\Database;
 use App\Core\Request;
 use App\Core\Response;
 use App\Models\Guard;
@@ -25,29 +26,60 @@ class GuardController extends Controller
     {
         $orgId = Auth::organisationId() ?? 1;
         $guardModel = new Guard();
+        $db = Database::getConnection();
 
         $statusFilter = $this->request->query('status', 'all');
         $searchQuery = trim((string)$this->request->query('search', ''));
 
+        // Query guards with assignment details
         $allGuards = $guardModel->getGuardsWithDetails($orgId);
+
+        // Query guards currently on duty (active attendance record with status = 0 and no checkout)
+        $stmtOnDuty = $db->prepare(
+            "SELECT DISTINCT guard_id FROM attendance 
+             WHERE organization_id = :org_id AND status = 0 AND check_out_at IS NULL"
+        );
+        $stmtOnDuty->execute(['org_id' => $orgId]);
+        $onDutyGuardIds = $stmtOnDuty->fetchAll(\PDO::FETCH_COLUMN);
+        $onDutyMap = array_flip(array_map('intval', $onDutyGuardIds));
 
         $totalCount = count($allGuards);
         $activeCount = 0;
         $inactiveCount = 0;
+        $assignedCount = 0;
+        $onDutyCount = 0;
 
-        foreach ($allGuards as $g) {
+        foreach ($allGuards as &$g) {
+            $gId = (int)$g['guard_id'];
+            $g['is_on_duty'] = isset($onDutyMap[$gId]);
+            $g['is_assigned'] = !empty($g['site_name']);
+
             if ((int)$g['guard_status'] === 0) {
                 $activeCount++;
             } else {
                 $inactiveCount++;
             }
+            if ($g['is_assigned']) {
+                $assignedCount++;
+            }
+            if ($g['is_on_duty']) {
+                $onDutyCount++;
+            }
         }
+        unset($g);
 
-        $filtered = array_filter($allGuards, function ($g) use ($statusFilter, $searchQuery) {
+        $filtered = array_filter($allGuards, function ($g) use ($statusFilter, $searchQuery, $onDutyMap) {
+            $gId = (int)$g['guard_id'];
             if ($statusFilter === 'active' && (int)$g['guard_status'] !== 0) {
                 return false;
             }
             if ($statusFilter === 'inactive' && (int)$g['guard_status'] === 0) {
+                return false;
+            }
+            if ($statusFilter === 'assigned' && empty($g['site_name'])) {
+                return false;
+            }
+            if ($statusFilter === 'on_duty' && !isset($onDutyMap[$gId])) {
                 return false;
             }
             if ($searchQuery !== '') {
@@ -57,22 +89,40 @@ class GuardController extends Controller
                 $emailMatches = str_contains(strtolower($g['email'] ?? ''), $query);
                 $phoneMatches = str_contains(strtolower($g['phone'] ?? ''), $query);
                 $siteMatches = str_contains(strtolower($g['site_name'] ?? ''), $query);
-                if (!$nameMatches && !$codeMatches && !$emailMatches && !$phoneMatches && !$siteMatches) {
+                $shiftMatches = str_contains(strtolower($g['shift_name'] ?? ''), $query);
+                if (!$nameMatches && !$codeMatches && !$emailMatches && !$phoneMatches && !$siteMatches && !$shiftMatches) {
                     return false;
                 }
             }
             return true;
         });
 
+        $filteredValues = array_values($filtered);
+        $totalFiltered = count($filteredValues);
+        $page = max(1, (int)$this->request->query('page', 1));
+        $pageSize = 10;
+        $totalPages = max(1, (int)ceil($totalFiltered / $pageSize));
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+        $offset = ($page - 1) * $pageSize;
+        $pagedGuards = array_slice($filteredValues, $offset, $pageSize);
+
         $this->render('admin/guards/index', [
             'pageTitle' => 'Security Guards Roster - Secure360',
             'organisationId' => $orgId,
-            'guards' => array_values($filtered),
+            'guards' => $pagedGuards,
             'statusFilter' => $statusFilter,
             'searchQuery' => $searchQuery,
             'totalCount' => $totalCount,
             'activeCount' => $activeCount,
             'inactiveCount' => $inactiveCount,
+            'assignedCount' => $assignedCount,
+            'onDutyCount' => $onDutyCount,
+            'currentPage' => $page,
+            'pageSize' => $pageSize,
+            'totalRecords' => $totalFiltered,
+            'totalPages' => $totalPages,
         ], 'layouts/admin');
     }
 
