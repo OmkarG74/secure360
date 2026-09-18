@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/utils/distance_formatter.dart';
 import '../../../core/utils/time_formatter.dart';
 
 class CheckInScreen extends StatefulWidget {
@@ -519,7 +520,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                                 const Icon(Icons.location_off, color: Color(0xFFDC2626), size: 18),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Outside Assigned Post (${_distanceMeters!.round()}m away)',
+                                  'Outside Assigned Area (${DistanceFormatter.formatDistance(_distanceMeters)} away)',
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF991B1B)),
                                 ),
                               ],
@@ -548,7 +549,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                                 const SizedBox(width: 8),
                                 Text(
                                   _distanceMeters != null
-                                      ? 'Within Assigned Post (${_distanceMeters!.round()}m away)'
+                                      ? 'Within Assigned Area (${DistanceFormatter.formatDistance(_distanceMeters)} away)'
                                       : 'GPS Location Acquired',
                                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF166534)),
                                 ),
