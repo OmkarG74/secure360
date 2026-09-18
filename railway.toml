@@ -1,0 +1,12 @@
+# ==============================================================================
+# SECURE360 - RAILWAY DEPLOYMENT CONFIGURATION
+# Forces Dockerfile builder and configures container restart policy
+# ==============================================================================
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

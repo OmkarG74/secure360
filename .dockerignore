@@ -1,0 +1,40 @@
+# Version control & IDE
+.git
+.github
+.vscode
+.idea
+
+# Secrets and local environments
+.env
+.env.local
+.env.*.local
+.env.backup
+*.env
+!.env.example
+
+# Client mobile app (Flutter workspace - separate build/deployment)
+mobile/
+
+# Tests and temporary scratch files
+tests/
+scratch/
+
+# Documentation and markdown
+docs/
+*.md
+!README.md
+!AGENTS.md
+
+# Database dumps & local backups
+*.sql.gz
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+local_dump.sql
+backup_*.sql
+
+# System files
+.DS_Store
+Thumbs.db
+*.log
