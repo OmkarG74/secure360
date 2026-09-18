@@ -381,9 +381,10 @@ class GuardAttendanceController extends Controller
         }
 
         // Verify selfie exists and belongs to this guard
-        $selfieStmt = $db->prepare("SELECT id FROM selfies WHERE id = :id AND guard_id = :guard_id AND organization_id = :org_id LIMIT 1");
+        $selfieStmt = $db->prepare("SELECT id, image_path FROM selfies WHERE id = :id AND guard_id = :guard_id AND organization_id = :org_id LIMIT 1");
         $selfieStmt->execute(['id' => $checkoutSelfieId, 'guard_id' => $guardId, 'org_id' => $orgId]);
-        if (!$selfieStmt->fetchColumn()) {
+        $checkoutSelfie = $selfieStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$checkoutSelfie) {
             $this->json([
                 'success' => false,
                 'message' => 'Checkout selfie record not found or invalid.',
@@ -392,8 +393,50 @@ class GuardAttendanceController extends Controller
             return;
         }
 
-        // Prevent reusing check-in selfie
-        if (!empty($openAttendance['selfie_id']) && (int)$openAttendance['selfie_id'] === $checkoutSelfieId) {
+        // Identify check-in selfie:
+        // Priority 1: Selfie explicitly marked as 'checkin' in selfies table for this attendance session
+        // Priority 2: Original attendance.selfie_id
+        $checkinSelfieId = null;
+        $checkinImagePath = null;
+
+        $ciStmt = $db->prepare(
+            "SELECT id, image_path 
+             FROM selfies 
+             WHERE attendance_id = :att_id AND verification_status = 'checkin' 
+             ORDER BY id ASC 
+             LIMIT 1"
+        );
+        $ciStmt->execute(['att_id' => $attendanceId]);
+        $ciRow = $ciStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($ciRow) {
+            $checkinSelfieId = (int)$ciRow['id'];
+            $checkinImagePath = (string)$ciRow['image_path'];
+            // If attendance.selfie_id was inadvertently overwritten previously, repair it back to true check-in selfie
+            if (!empty($openAttendance['selfie_id']) && (int)$openAttendance['selfie_id'] !== $checkinSelfieId) {
+                $repairStmt = $db->prepare("UPDATE attendance SET selfie_id = :ci_id WHERE id = :att_id");
+                $repairStmt->execute(['ci_id' => $checkinSelfieId, 'att_id' => $attendanceId]);
+            }
+        } elseif (!empty($openAttendance['selfie_id'])) {
+            $checkinSelfieId = (int)$openAttendance['selfie_id'];
+            $ciPathStmt = $db->prepare("SELECT image_path FROM selfies WHERE id = :id LIMIT 1");
+            $ciPathStmt->execute(['id' => $checkinSelfieId]);
+            $checkinImagePath = (string)($ciPathStmt->fetchColumn() ?: '');
+        }
+
+        // Prevent reusing check-in selfie:
+        // 1. Must not reuse check-in selfie ID
+        if (!empty($checkinSelfieId) && $checkinSelfieId === $checkoutSelfieId) {
+            $this->json([
+                'success' => false,
+                'message' => 'The checkout selfie must not reuse the check-in selfie. Please capture a newly taken photo.',
+                'status_code' => 422,
+            ], 422);
+            return;
+        }
+
+        // 2. Must not reuse check-in selfie image file/path
+        if (!empty($checkinImagePath) && !empty($checkoutSelfie['image_path']) && $checkinImagePath === $checkoutSelfie['image_path']) {
             $this->json([
                 'success' => false,
                 'message' => 'The checkout selfie must not reuse the check-in selfie. Please capture a newly taken photo.',

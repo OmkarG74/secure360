@@ -116,6 +116,7 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
     setState(() {
       _isCapturingSelfie = true;
       _selfieError = null;
+      _submissionError = null;
     });
 
     try {
@@ -133,6 +134,8 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
         _isCapturingSelfie = false;
         if (photo != null) {
           _selfieFile = File(photo.path);
+          _selfieError = null;
+          _submissionError = null;
         }
       });
     } catch (e) {
@@ -508,6 +511,7 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: Image.file(
                           _selfieFile!,
+                          key: ValueKey(_selfieFile!.path),
                           width: 140,
                           height: 140,
                           fit: BoxFit.cover,

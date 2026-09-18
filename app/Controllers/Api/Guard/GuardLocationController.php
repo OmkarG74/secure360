@@ -141,10 +141,10 @@ class GuardLocationController extends Controller
             $attendanceId
         );
 
-        // If an attendance_id was linked, update the attendance row's selfie_id
+        // If an attendance_id was linked and attendance row has no selfie_id, record it (never overwrite existing check-in selfie)
         if ($attendanceId && $id) {
             $db = \App\Core\Database::getConnection();
-            $upStmt = $db->prepare("UPDATE attendance SET selfie_id = :selfie_id WHERE id = :att_id AND guard_id = :guard_id");
+            $upStmt = $db->prepare("UPDATE attendance SET selfie_id = :selfie_id WHERE id = :att_id AND guard_id = :guard_id AND selfie_id IS NULL");
             $upStmt->execute([
                 'selfie_id' => $id,
                 'att_id' => $attendanceId,
