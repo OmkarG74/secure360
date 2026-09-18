@@ -191,7 +191,7 @@ $onDutyCount = $onDutyCount ?? 0;
                                 <!-- Last Login -->
                                 <td style="font-size: 0.8125rem; color: #64748b;">
                                     <?php if (!empty($g['last_login_at'])): ?>
-                                        <?= date('M j, Y g:i A', strtotime($g['last_login_at'])) ?>
+                                        <?= format_datetime($g['last_login_at']) ?>
                                     <?php else: ?>
                                         <span style="color: #94a3b8; font-style: italic;">Never logged in</span>
                                     <?php endif; ?>

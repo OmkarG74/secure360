@@ -23,7 +23,7 @@ return [
     'env' => getenv('APP_ENV') ?: 'development',
     'debug' => $debug,
     'url' => $appUrl,
-    'timezone' => getenv('APP_TIMEZONE') ?: 'UTC',
+    'timezone' => getenv('APP_TIMEZONE') ?: 'Asia/Kolkata',
     'locale' => getenv('APP_LOCALE') ?: 'en',
     
     // Session parameters

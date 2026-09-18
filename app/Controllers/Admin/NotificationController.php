@@ -139,6 +139,6 @@ class NotificationController extends Controller
             $days = (int)floor($diff / 86400);
             return $days . ' day' . ($days > 1 ? 's' : '') . ' ago';
         }
-        return date('M j, Y', $timestamp);
+        return format_date($timestamp);
     }
 }

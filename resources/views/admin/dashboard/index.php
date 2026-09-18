@@ -30,18 +30,6 @@ $orgId = $currentUser['organization_id'] ?? (\App\Core\Auth::organisationId() ??
 $hour = (int)date('G');
 $greeting = ($hour < 12) ? 'Good morning' : (($hour < 17) ? 'Good afternoon' : 'Good evening');
 $firstName = explode(' ', trim($userName))[0];
-
-// Relative time helper
-function timeAgo(string $datetime): string {
-    $timestamp = strtotime($datetime);
-    if (!$timestamp) return 'Recently';
-    $diff = time() - $timestamp;
-    if ($diff < 60) return 'Just now';
-    if ($diff < 3600) return floor($diff / 60) . 'm ago';
-    if ($diff < 86400) return floor($diff / 3600) . 'h ago';
-    if ($diff < 604800) return floor($diff / 86400) . 'd ago';
-    return date('M j', $timestamp);
-}
 ?>
 
 <!-- Leaflet CSS for Operational Map -->
@@ -58,7 +46,7 @@ function timeAgo(string $datetime): string {
 
         <div class="dashboard-date-selector">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <span><?= date('l, M j, Y') ?></span>
+            <span><?= format_date(date('Y-m-d')) ?></span>
             <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
         </div>
     </div>
@@ -315,11 +303,11 @@ function timeAgo(string $datetime): string {
                                         <span style="font-weight: 500; color: #334155;"><?= e($att['site_name'] ?? 'Unassigned') ?></span>
                                     </td>
                                     <td>
-                                        <span style="font-size: 0.75rem; color: #475569;"><?= date('g:i A', strtotime($att['check_in_at'])) ?></span>
+                                        <span style="font-size: 0.75rem; color: #475569;"><?= format_time($att['check_in_at']) ?></span>
                                     </td>
                                     <td>
                                         <?php if (!empty($att['check_out_at'])): ?>
-                                            <span style="font-size: 0.75rem; color: #475569;"><?= date('g:i A', strtotime($att['check_out_at'])) ?></span>
+                                            <span style="font-size: 0.75rem; color: #475569;"><?= format_time($att['check_out_at']) ?></span>
                                         <?php else: ?>
                                             <span style="font-size: 0.75rem; color: #16a34a; font-weight: 500;">Active</span>
                                         <?php endif; ?>
@@ -372,7 +360,7 @@ function timeAgo(string $datetime): string {
                                     <?= e($act['title'] ?? $act['action_type'] ?? 'performed an action') ?>
                                 </div>
                                 <div class="activity-time">
-                                    <?= timeAgo($act['created_at'] ?? date('Y-m-d H:i:s')) ?>
+                                    <?= format_time_ago($act['created_at'] ?? null) ?>
                                 </div>
                             </div>
                         </div>

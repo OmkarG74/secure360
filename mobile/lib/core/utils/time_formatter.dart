@@ -1,113 +1,122 @@
+import 'package:intl/intl.dart';
+
+/// Centralized Date & Time Formatter for Secure360 Mobile Guard Application
+///
+/// Follows Global Display Standards:
+/// - Date only: dd-MMM-yy (e.g. 18-Sep-26)
+/// - Date & Time: dd-MMM-yy hh:mm AM/PM (e.g. 18-Sep-26 05:45 PM)
+/// - Time only: hh:mm AM/PM (e.g. 05:45 PM, 08:00 AM)
+/// - Date range: dd-MMM-yy → dd-MMM-yy (e.g. 01-Jan-26 → 31-Dec-26)
+/// - Shift range: hh:mm AM/PM - hh:mm AM/PM (e.g. 08:00 AM - 04:00 PM)
 class TimeFormatter {
-  /// Formats a time string (e.g. "08:00:00", "16:00", "17:32:03") to 12-hour AM/PM format.
-  /// Examples:
-  ///   "08:00:00" -> "8:00 AM"
-  ///   "16:00:00" -> "4:00 PM"
-  ///   "17:32:03" -> "5:32:03 PM"
-  ///   "00:00:00" -> "12:00 AM"
-  ///   "12:00:00" -> "12:00 PM"
-  ///   "00:15:30" -> "12:15:30 AM"
-  ///   "12:45"    -> "12:45 PM"
-  static String formatTime(String? timeStr) {
-    if (timeStr == null || timeStr.trim().isEmpty) return '';
-    final trimmed = timeStr.trim();
+  static final DateFormat _dateFormat = DateFormat('dd-MMM-yy');
+  static final DateFormat _dateTimeFormat = DateFormat('dd-MMM-yy hh:mm a');
+  static final DateFormat _timeFormat = DateFormat('hh:mm a');
 
-    // Avoid double conversion if already formatted
-    if (trimmed.toUpperCase().contains('AM') || trimmed.toUpperCase().contains('PM')) {
-      return trimmed;
+  /// Parse dynamic input (String, DateTime, int) into DateTime safely.
+  static DateTime? parseDateTime(dynamic input) {
+    if (input == null) return null;
+    if (input is DateTime) return input;
+    if (input is int) return DateTime.fromMillisecondsSinceEpoch(input);
+
+    if (input is String) {
+      final trimmed = input.trim();
+      if (trimmed.isEmpty || trimmed == '0000-00-00' || trimmed == '0000-00-00 00:00:00') {
+        return null;
+      }
+
+      // If it's pure time e.g. "08:00:00" or "16:00"
+      if (RegExp(r'^\d{1,2}:\d{2}(:\d{2})?$').hasMatch(trimmed)) {
+        try {
+          return DateTime.parse('1970-01-01 $trimmed');
+        } catch (_) {}
+      }
+
+      // Try standard DateTime.tryParse (handles ISO 8601 and YYYY-MM-DD HH:MM:SS)
+      final parsed = DateTime.tryParse(trimmed);
+      if (parsed != null) return parsed;
+
+      // Try common alternative separators
+      try {
+        final normalized = trimmed.replaceAll('/', '-');
+        final retry = DateTime.tryParse(normalized);
+        if (retry != null) return retry;
+      } catch (_) {}
     }
 
+    return null;
+  }
+
+  /// Formats date only: dd-MMM-yy (e.g. 18-Sep-26)
+  static String formatDate(dynamic dateInput, {String fallback = '—'}) {
+    final dt = parseDateTime(dateInput);
+    if (dt == null) return fallback;
+    return _dateFormat.format(dt);
+  }
+
+  /// Formats date and time: dd-MMM-yy hh:mm AM/PM (e.g. 18-Sep-26 05:45 PM)
+  static String formatDateTime(dynamic dateTimeInput, {String fallback = '—'}) {
+    final dt = parseDateTime(dateTimeInput);
+    if (dt == null) return fallback;
+    final formatted = _dateTimeFormat.format(dt);
+    return _uppercaseAmPm(formatted);
+  }
+
+  /// Formats time only: hh:mm AM/PM (e.g. 05:45 PM, 08:00 AM)
+  static String formatTime(dynamic timeInput, {String fallback = '—'}) {
+    if (timeInput == null) return fallback;
+    final trimmed = timeInput.toString().trim();
+    if (trimmed.isEmpty) return fallback;
+
+    // Avoid double conversion if already formatted with AM/PM
+    if (trimmed.toUpperCase().contains('AM') || trimmed.toUpperCase().contains('PM')) {
+      return _uppercaseAmPm(trimmed);
+    }
+
+    final dt = parseDateTime(trimmed);
+    if (dt != null) {
+      return _uppercaseAmPm(_timeFormat.format(dt));
+    }
+
+    // Fallback manual parse for HH:MM:SS or HH:MM
     final parts = trimmed.split(':');
-    if (parts.length < 2) return trimmed;
-
-    final hour = int.tryParse(parts[0]);
-    final minute = int.tryParse(parts[1]);
-    if (hour == null || minute == null) return trimmed;
-
-    final period = hour >= 12 ? 'PM' : 'AM';
-    var hour12 = hour % 12;
-    if (hour12 == 0) hour12 = 12;
-
-    final minStr = minute.toString().padLeft(2, '0');
-
-    // If seconds are present and not "00", retain seconds: e.g. "17:32:03" -> "5:32:03 PM"
-    if (parts.length >= 3) {
-      final secPart = parts[2].trim();
-      final sec = int.tryParse(secPart.split('.')[0]); // ignore milliseconds if any
-      if (sec != null && sec > 0) {
-        final secStr = sec.toString().padLeft(2, '0');
-        return '$hour12:$minStr:$secStr $period';
+    if (parts.length >= 2) {
+      final hour = int.tryParse(parts[0]);
+      final minute = int.tryParse(parts[1]);
+      if (hour != null && minute != null) {
+        final period = hour >= 12 ? 'PM' : 'AM';
+        var hour12 = hour % 12;
+        if (hour12 == 0) hour12 = 12;
+        final hrStr = hour12.toString().padLeft(2, '0');
+        final minStr = minute.toString().padLeft(2, '0');
+        return '$hrStr:$minStr $period';
       }
     }
 
-    // Default time format (no seconds or seconds were 00)
-    return '$hour12:$minStr $period';
+    return trimmed;
   }
 
-  /// Formats a datetime string (e.g. "2026-09-11 17:32:03" or "2026-09-11T08:00:00")
-  /// Preserves the date and converts the time portion to 12-hour format with AM/PM.
-  /// Examples:
-  ///   "2026-09-11 17:32:03" -> "2026-09-11 5:32:03 PM"
-  ///   "2026-09-11 08:00:00" -> "2026-09-11 8:00:00 AM" (or "2026-09-11 8:00 AM" if clean)
-  static String formatDateTime(String? dateTimeStr, {bool preserveSeconds = true}) {
-    if (dateTimeStr == null || dateTimeStr.trim().isEmpty) return '';
-    final trimmed = dateTimeStr.trim();
-
-    // Avoid double conversion
-    if (trimmed.toUpperCase().contains('AM') || trimmed.toUpperCase().contains('PM')) {
-      return trimmed;
-    }
-
-    // Split by space or 'T'
-    String datePart = '';
-    String timePart = '';
-
-    if (trimmed.contains(' ')) {
-      final split = trimmed.split(' ');
-      datePart = split[0];
-      timePart = split.sublist(1).join(' ');
-    } else if (trimmed.contains('T')) {
-      final split = trimmed.split('T');
-      datePart = split[0];
-      timePart = split.sublist(1).join('T');
-    } else {
-      // Pure time string
-      return formatTime(trimmed);
-    }
-
-    // Format time part
-    final timeParts = timePart.split(':');
-    if (timeParts.length < 2) return trimmed;
-
-    final hour = int.tryParse(timeParts[0]);
-    final minute = int.tryParse(timeParts[1]);
-    if (hour == null || minute == null) return trimmed;
-
-    final period = hour >= 12 ? 'PM' : 'AM';
-    var hour12 = hour % 12;
-    if (hour12 == 0) hour12 = 12;
-
-    final minStr = minute.toString().padLeft(2, '0');
-
-    if (timeParts.length >= 3 && preserveSeconds) {
-      final secPart = timeParts[2].trim().split('.')[0];
-      final sec = int.tryParse(secPart);
-      if (sec != null) {
-        final secStr = sec.toString().padLeft(2, '0');
-        return '$datePart $hour12:$minStr:$secStr $period';
-      }
-    }
-
-    return '$datePart $hour12:$minStr $period';
+  /// Formats date range: dd-MMM-yy → dd-MMM-yy (e.g. 01-Jan-26 → 31-Dec-26)
+  static String formatDateRange(dynamic start, dynamic end, {String fallback = '—'}) {
+    final startStr = formatDate(start, fallback: '');
+    final endStr = end != null ? formatDate(end, fallback: '') : 'Ongoing';
+    if (startStr.isEmpty && (endStr.isEmpty || endStr == 'Ongoing')) return fallback;
+    if (startStr.isEmpty) return endStr;
+    return '$startStr → $endStr';
   }
 
-  /// Formats a time range (e.g. "08:00:00", "16:00:00" -> "8:00 AM - 4:00 PM")
-  static String formatTimeRange(String? start, String? end) {
-    final startFormatted = formatTime(start);
-    final endFormatted = formatTime(end);
-    if (startFormatted.isEmpty && endFormatted.isEmpty) return '';
+  /// Formats shift time range: hh:mm AM/PM - hh:mm AM/PM (e.g. 08:00 AM - 04:00 PM)
+  static String formatTimeRange(dynamic start, dynamic end, {String fallback = '—'}) {
+    final startFormatted = formatTime(start, fallback: '');
+    final endFormatted = formatTime(end, fallback: '');
+    if (startFormatted.isEmpty && endFormatted.isEmpty) return fallback;
     if (startFormatted.isEmpty) return endFormatted;
     if (endFormatted.isEmpty) return startFormatted;
     return '$startFormatted - $endFormatted';
+  }
+
+  /// Ensures AM/PM indicators are displayed in uppercase
+  static String _uppercaseAmPm(String text) {
+    return text.replaceAll('am', 'AM').replaceAll('pm', 'PM');
   }
 }

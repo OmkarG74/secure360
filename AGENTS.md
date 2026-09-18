@@ -135,3 +135,39 @@ The database `secure360_v2` is the single source of truth:
 - **Health Verification**: Verify deployment via `GET /api/v1/health`. It returns HTTP 200 with database connection status and PHP version.
 - **MySQL ONLY_FULL_GROUP_BY Invariant**: Railway MySQL and modern MySQL 8.0+ enforce `sql_mode=ONLY_FULL_GROUP_BY`. Never select non-aggregated columns in `GROUP BY` queries unless every selected column is explicitly in `GROUP BY` or guaranteed functionally dependent on unique keys. Avoid improper `GROUP BY` clauses to deduplicate `OR` joins; instead, design joins as 1-to-1 relationships on primary keys using scalar subqueries/`COALESCE` so duplicate rows are prevented at the join level.
 
+---
+
+## 8. Global Date and Time Formatting Standards
+
+To ensure a seamless and professional presentation across Super Admin, Organisation Admin, and Flutter Mobile, all dates and times must adhere to the following unified standards:
+
+### Standard Display Formats:
+1. **Date only**: `dd-MMM-yy` (e.g. `18-Sep-26`)
+2. **Date and time**: `dd-MMM-yy hh:mm AM/PM` (e.g. `18-Sep-26 05:45 PM`)
+3. **Time only**: `hh:mm AM/PM` (e.g. `05:45 PM`, `08:00 AM`)
+4. **Date ranges**: `dd-MMM-yy → dd-MMM-yy` (e.g. `01-Jan-26 → 31-Dec-26`)
+5. **Shift time ranges**: `hh:mm AM/PM - hh:mm AM/PM` (e.g. `08:00 AM - 04:00 PM`)
+6. **Relative time**: Friendly labels like "Today", "Yesterday", or "2h ago" may be used where appropriate for UX, but older timestamps must fall back to the standard date format (`dd-MMM-yy`).
+
+### Timezone Invariant:
+- Application timezone is standardized to **`Asia/Kolkata` (IST, UTC+5:30)** across PHP (`date_default_timezone_set('Asia/Kolkata')`), `.env` (`APP_TIMEZONE=Asia/Kolkata`), and MySQL connections (`SET time_zone = '+05:30'`).
+
+### Implementation Rules:
+- **Web Application (PHP)**: Use centralized helpers in `app/Helpers/helpers.php`:
+  - `format_date($date)`
+  - `format_datetime($datetime)`
+  - `format_time($time)`
+  - `format_date_range($startDate, $endDate)`
+  - `format_time_range($startTime, $endTime)`
+  - `format_time_ago($datetime)`
+- **Mobile Client (Flutter)**: Use `TimeFormatter` in `mobile/lib/core/utils/time_formatter.dart`:
+  - `TimeFormatter.formatDate(dateTime)`
+  - `TimeFormatter.formatDateTime(dateTime)`
+  - `TimeFormatter.formatTime(timeOfDayOrDateTime)`
+  - `TimeFormatter.formatDateRange(start, end)`
+  - `TimeFormatter.formatShiftRange(start, end)`
+  - `TimeFormatter.formatTimeAgo(dateTime)`
+- **HTML Forms Exception**: Native HTML `<input type="date">` and `<input type="time">` `value` attributes **MUST** remain in standard ISO format (`YYYY-MM-DD` and `HH:MM`) so that browser date/time pickers operate correctly. Display text and labels around the inputs must use the formatted strings.
+- **Database & API Machine Invariant**: Database columns (`DATETIME`, `DATE`, `TIME`) and REST API payloads continue using standard machine-readable ISO/SQL formats (`YYYY-MM-DD HH:MM:SS`). Formatting is applied strictly at the presentation/UI layer.
+
+

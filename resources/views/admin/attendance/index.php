@@ -1149,7 +1149,7 @@ function renderAttendanceTable() {
         // Shift
         let shiftHtml = '<span style="color:#94a3b8;">Standard</span>';
         if (r.shift_name) {
-            const hours = (r.shift_start && r.shift_end) ? `${r.shift_start.substring(0, 5)} - ${r.shift_end.substring(0, 5)}` : '';
+            const hours = (r.shift_start && r.shift_end) ? `${formatTime(r.shift_start)} - ${formatTime(r.shift_end)}` : '';
             shiftHtml = `
                 <div class="shift-tag">
                     <span>${escapeHtml(r.shift_name)}</span>
@@ -1315,20 +1315,57 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatTime(timeStr) {
+    if (!timeStr) return '';
+    try {
+        const parts = timeStr.trim().split(':');
+        if (parts.length < 2) return timeStr;
+        let hours = parseInt(parts[0], 10);
+        const mins = parts[1].padStart(2, '0');
+        const period = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+        const hrStr = String(hours).padStart(2, '0');
+        return `${hrStr}:${mins} ${period}`;
+    } catch (e) {
+        return timeStr;
+    }
+}
+
 function formatDateTime(dateStr) {
     if (!dateStr) return '—';
     try {
-        const d = new Date(dateStr);
+        let d;
+        if (typeof dateStr === 'string' && dateStr.includes(' ')) {
+            const parts = dateStr.trim().split(' ');
+            const dateParts = parts[0].split('-');
+            const timeParts = parts[1].split(':');
+            const year = parseInt(dateParts[0], 10);
+            const month = parseInt(dateParts[1], 10) - 1;
+            const day = parseInt(dateParts[2], 10);
+            const hour = parseInt(timeParts[0], 10);
+            const min = parseInt(timeParts[1], 10);
+            const sec = timeParts.length > 2 ? parseInt(timeParts[2], 10) : 0;
+            d = new Date(year, month, day, hour, min, sec);
+        } else {
+            d = new Date(dateStr);
+        }
         if (isNaN(d.getTime())) return dateStr;
-        return d.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-        }) + ' • ' + d.toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        });
+
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = MONTH_NAMES_SHORT[d.getMonth()];
+        const year = String(d.getFullYear()).slice(-2);
+
+        let hours = d.getHours();
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        const period = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+        const hrStr = String(hours).padStart(2, '0');
+
+        return `${day}-${month}-${year} ${hrStr}:${mins} ${period}`;
     } catch (e) {
         return dateStr;
     }

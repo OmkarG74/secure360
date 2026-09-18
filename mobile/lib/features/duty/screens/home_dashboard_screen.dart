@@ -2454,7 +2454,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return TimeFormatter.formatDateTime(time);
   }
 
   Widget _buildGpsRow(String label, String value) {

@@ -81,6 +81,7 @@ class Database
                     ]
                 );
                 self::$connectedDbName = $database;
+                self::$instance->exec("SET time_zone = '+05:30'");
             } catch (PDOException $e) {
                 // Log full error server-side for Railway deployment diagnostics
                 error_log(sprintf(

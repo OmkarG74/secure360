@@ -14,7 +14,7 @@ $m = $metrics ?? [
 
 $recentOrgs = $recentOrgs ?? [];
 $recentActivity = $recentActivity ?? [];
-$todayDate = date('l, d M Y');
+$todayDate = format_date(date('Y-m-d'));
 
 $activePct = $m['totalOrgs'] > 0 ? round(($m['activeOrgs'] / $m['totalOrgs']) * 100) : 100;
 ?>
@@ -508,7 +508,7 @@ $activePct = $m['totalOrgs'] > 0 ? round(($m['activeOrgs'] / $m['totalOrgs']) * 
                                             <?php endif; ?>
                                         </td>
                                         <td style="color: #64748b; font-size: 0.75rem; white-space: nowrap;">
-                                            <?= !empty($org['created_at']) ? date('d M Y', strtotime($org['created_at'])) : '—' ?>
+                                            <?= format_date($org['created_at'] ?? null) ?>
                                         </td>
                                         <td style="text-align: right;">
                                             <a href="<?= url('/superadmin/organisations') ?>" class="btn" style="padding: 0.25rem 0.6rem; font-size: 0.725rem; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; text-decoration: none; border-radius: 4px; font-weight: 600;">
@@ -569,7 +569,7 @@ $activePct = $m['totalOrgs'] > 0 ? round(($m['activeOrgs'] / $m['totalOrgs']) * 
                                         <div class="sa-timeline-title"><?= e($act['title']) ?></div>
                                         <div class="sa-timeline-desc"><?= e($act['description']) ?></div>
                                         <div class="sa-timeline-time">
-                                            <?= !empty($act['created_at']) ? date('M d, H:i', strtotime($act['created_at'])) : 'Just now' ?>
+                                            <?= !empty($act['created_at']) ? format_datetime($act['created_at']) : 'Just now' ?>
                                         </div>
                                     </div>
                                 </div>

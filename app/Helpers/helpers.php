@@ -246,3 +246,138 @@ if (!function_exists('validate_shift_window')) {
     }
 }
 
+if (!function_exists('parse_timestamp')) {
+    /**
+     * Parse various date/time input formats into a Unix timestamp.
+     */
+    function parse_timestamp(mixed $datetime): ?int
+    {
+        if (empty($datetime)) {
+            return null;
+        }
+        if ($datetime instanceof DateTimeInterface) {
+            return $datetime->getTimestamp();
+        }
+        if (is_numeric($datetime)) {
+            return (int)$datetime;
+        }
+        if (is_string($datetime)) {
+            $trimmed = trim($datetime);
+            if ($trimmed === '' || $trimmed === '0000-00-00' || $trimmed === '0000-00-00 00:00:00') {
+                return null;
+            }
+            // If it's pure time (e.g. "08:00:00" or "08:00"), prepend reference date for parsing
+            if (preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $trimmed)) {
+                $trimmed = '1970-01-01 ' . $trimmed;
+            }
+            $ts = strtotime($trimmed);
+            return ($ts !== false) ? $ts : null;
+        }
+        return null;
+    }
+}
+
+if (!function_exists('format_date')) {
+    /**
+     * Format to global standard Date Only: dd-MMM-yy (e.g. 18-Sep-26)
+     */
+    function format_date(mixed $date, string $fallback = '—'): string
+    {
+        $ts = parse_timestamp($date);
+        return $ts !== null ? date('d-M-y', $ts) : $fallback;
+    }
+}
+
+if (!function_exists('format_datetime')) {
+    /**
+     * Format to global standard Date and Time: dd-MMM-yy hh:mm AM/PM (e.g. 18-Sep-26 05:45 PM)
+     */
+    function format_datetime(mixed $datetime, string $fallback = '—'): string
+    {
+        $ts = parse_timestamp($datetime);
+        return $ts !== null ? date('d-M-y h:i A', $ts) : $fallback;
+    }
+}
+
+if (!function_exists('format_time')) {
+    /**
+     * Format to global standard Time Only: hh:mm AM/PM (e.g. 05:45 PM, 08:00 AM)
+     */
+    function format_time(mixed $time, string $fallback = '—'): string
+    {
+        $ts = parse_timestamp($time);
+        return $ts !== null ? date('h:i A', $ts) : $fallback;
+    }
+}
+
+if (!function_exists('format_date_range')) {
+    /**
+     * Format to global standard Date Range: dd-MMM-yy → dd-MMM-yy (e.g. 01-Jan-26 → 31-Dec-26)
+     */
+    function format_date_range(mixed $startDate, mixed $endDate, string $fallback = '—'): string
+    {
+        $startFormatted = format_date($startDate, '');
+        $endFormatted = !empty($endDate) ? format_date($endDate, '') : 'Ongoing';
+
+        if ($startFormatted === '' && ($endFormatted === '' || $endFormatted === 'Ongoing')) {
+            return $fallback;
+        }
+        if ($startFormatted === '') {
+            return $endFormatted;
+        }
+        return "{$startFormatted} → {$endFormatted}";
+    }
+}
+
+if (!function_exists('format_time_range')) {
+    /**
+     * Format to global standard Shift Time Range: hh:mm AM/PM - hh:mm AM/PM (e.g. 08:00 AM - 04:00 PM)
+     */
+    function format_time_range(mixed $startTime, mixed $endTime, string $fallback = '—'): string
+    {
+        $startFormatted = format_time($startTime, '');
+        $endFormatted = format_time($endTime, '');
+
+        if ($startFormatted === '' && $endFormatted === '') {
+            return $fallback;
+        }
+        if ($startFormatted === '') return $endFormatted;
+        if ($endFormatted === '') return $startFormatted;
+
+        return "{$startFormatted} - {$endFormatted}";
+    }
+}
+
+if (!function_exists('format_time_ago')) {
+    /**
+     * Format relative time with fallback to dd-MMM-yy for events older than 7 days
+     */
+    function format_time_ago(mixed $datetime, string $fallback = 'Just now'): string
+    {
+        $ts = parse_timestamp($datetime);
+        if ($ts === null) {
+            return $fallback;
+        }
+        $diff = time() - $ts;
+        if ($diff < 0) {
+            return format_datetime($datetime);
+        }
+        if ($diff < 60) {
+            return 'Just now';
+        }
+        if ($diff < 3600) {
+            $mins = max(1, (int)floor($diff / 60));
+            return "{$mins}m ago";
+        }
+        if ($diff < 86400) {
+            $hours = (int)floor($diff / 3600);
+            return "{$hours}h ago";
+        }
+        if ($diff < 604800) {
+            $days = (int)floor($diff / 86400);
+            return "{$days}d ago";
+        }
+        return format_date($datetime);
+    }
+}
+

@@ -106,8 +106,7 @@ $inactiveCount = $inactiveCount ?? 0;
                                 </span>
                             </td>
                             <td style="padding: 1.15rem 1.25rem; color: #64748b; font-size: 0.8125rem;">
-                                <?= date('M j, Y', strtotime($c['start_date'])) ?> &rarr; 
-                                <?= $c['end_date'] ? date('M j, Y', strtotime($c['end_date'])) : 'Ongoing' ?>
+                                <?= format_date_range($c['start_date'], $c['end_date']) ?>
                             </td>
                             <td style="padding: 1.15rem 1.25rem;">
                                 <?php if ((int)$c['status'] === 0): ?>

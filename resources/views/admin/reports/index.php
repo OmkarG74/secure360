@@ -11,17 +11,15 @@ $toDate = $toDate ?? '';
 $searchQuery = $searchQuery ?? '';
 
 // Build human-friendly date subtitle
-$periodLabel = 'Today';
+$periodLabel = 'Today (' . format_date(date('Y-m-d')) . ')';
 if ($preset === 'yesterday') {
-    $periodLabel = 'Yesterday (' . date('M j, Y', strtotime('-1 day')) . ')';
+    $periodLabel = 'Yesterday (' . format_date('-1 day') . ')';
 } elseif ($preset === 'specific') {
-    $periodLabel = $fromDate ? date('M j, Y', strtotime($fromDate)) : 'Specific Date';
+    $periodLabel = $fromDate ? format_date($fromDate) : 'Specific Date';
 } elseif ($preset === 'custom') {
-    $periodLabel = ($fromDate ? date('M j, Y', strtotime($fromDate)) : '') . ' - ' . ($toDate ? date('M j, Y', strtotime($toDate)) : '');
+    $periodLabel = format_date_range($fromDate, $toDate);
 } elseif ($preset === 'all') {
     $periodLabel = 'All Time';
-} else {
-    $periodLabel = 'Today (' . date('M j, Y') . ')';
 }
 ?>
 
@@ -212,8 +210,8 @@ if ($preset === 'yesterday') {
                             <td style="font-weight: 600;"><?= e($log['guard_name'] ?? 'Guard') ?></td>
                             <td><code><?= e($log['employee_code'] ?? 'GRD') ?></code></td>
                             <td><?= e($log['site_name'] ?? 'Unassigned Post') ?></td>
-                            <td><?= e($log['check_in_at'] ? date('M d, H:i', strtotime($log['check_in_at'])) : '-') ?></td>
-                            <td><?= e($log['check_out_at'] ? date('M d, H:i', strtotime($log['check_out_at'])) : '-') ?></td>
+                            <td><?= e($log['check_in_at'] ? format_datetime($log['check_in_at']) : '—') ?></td>
+                            <td><?= e($log['check_out_at'] ? format_datetime($log['check_out_at']) : '—') ?></td>
                             <td>
                                 <?php if (!empty($log['check_in_latitude']) && !empty($log['check_in_longitude'])): ?>
                                     <span style="font-size: 0.75rem; color: #64748b;">
