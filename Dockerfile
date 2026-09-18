@@ -16,10 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Ensure strictly one MPM (mpm_prefork) is enabled for mod_php and enable required modules
+# 2. Configure Apache MPM (mod_php requires mpm_prefork), suppress ServerName warning, and enable modules
 RUN rm -f /etc/apache2/mods-enabled/mpm_event.* \
           /etc/apache2/mods-enabled/mpm_worker.* \
-    && a2enmod mpm_prefork rewrite headers remoteip
+    && a2enmod mpm_prefork rewrite headers remoteip \
+    && echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
 # 3. Use production PHP configuration
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"

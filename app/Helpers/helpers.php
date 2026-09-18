@@ -47,10 +47,43 @@ if (!function_exists('config')) {
     }
 }
 
+if (!function_exists('base_path_url')) {
+    /**
+     * Determine the deployment subdirectory base path.
+     * Returns '/Secure360' on local WAMP, and '' on production / domain-root hosting.
+     */
+    function base_path_url(): string
+    {
+        // 1. If running under Apache, determine if we are in a subfolder from SCRIPT_NAME
+        if (!empty($_SERVER['SCRIPT_NAME'])) {
+            $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME']);
+            $dir = dirname($scriptName);
+            // If running as /Secure360/public/index.php, strip /public to get /Secure360
+            $dir = preg_replace('#/public$#', '', $dir);
+            $cleanDir = rtrim(str_replace('\\', '/', $dir), '/');
+            if ($cleanDir !== '' && $cleanDir !== '/') {
+                return $cleanDir;
+            }
+            return '';
+        }
+
+        // 2. Fallback to configured APP_URL path
+        $configured = config('app.url', '');
+        if (!empty($configured)) {
+            $path = parse_url($configured, PHP_URL_PATH);
+            if (!empty($path) && $path !== '/') {
+                return rtrim($path, '/');
+            }
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('url')) {
     /**
      * Generate absolute or relative URL
-     * Ensures consistent subfolder routing under Apache (e.g. /Secure360)
+     * Automatically adapts between local subfolder (e.g. /Secure360) and production root (/)
      */
     function url(string $path = ''): string
     {
@@ -58,9 +91,7 @@ if (!function_exists('url')) {
             return $path;
         }
 
-        $configured = config('app.url', 'http://localhost/Secure360');
-        $configuredPath = parse_url($configured, PHP_URL_PATH) ?? '/Secure360';
-        $baseDir = rtrim(str_replace('\\', '/', $configuredPath), '/');
+        $baseDir = base_path_url();
 
         // Dynamically match current request host and scheme if running under web server
         if (!empty($_SERVER['HTTP_HOST'])) {
@@ -71,7 +102,11 @@ if (!function_exists('url')) {
             $host = $_SERVER['HTTP_HOST'];
             $baseUrl = "{$scheme}://{$host}{$baseDir}";
         } else {
+            $configured = config('app.url', 'http://localhost');
             $baseUrl = rtrim($configured, '/');
+            if ($baseDir !== '' && !str_ends_with($baseUrl, $baseDir)) {
+                $baseUrl .= $baseDir;
+            }
         }
 
         $cleanPath = ltrim($path, '/');

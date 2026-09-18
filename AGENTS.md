@@ -125,10 +125,11 @@ The database `secure360_v2` is the single source of truth:
   - `APP_DEBUG=false`
   - `APP_URL=https://<your-railway-domain>.up.railway.app`
   - `JWT_SECRET=<generate-a-64-character-random-hex-key>`
-  - `DB_HOST` (or Railway MySQL `MYSQLHOST`)
-  - `DB_PORT` (or Railway MySQL `MYSQLPORT`, default 3306)
-  - `DB_NAME` (or `DB_DATABASE` or `MYSQLDATABASE`, e.g. `railway` or `secure360_v2`)
-  - `DB_USER` (or `DB_USERNAME` or `MYSQLUSER`, default `root`)
-  - `DB_PASS` (or `DB_PASSWORD` or `MYSQLPASSWORD`)
+  - Database Priority 1: `DB_HOST`, `DB_PORT`, `DB_NAME` (or `DB_DATABASE`), `DB_USER` (or `DB_USERNAME`), `DB_PASS` (or `DB_PASSWORD`)
+  - Database Priority 2: `MYSQLHOST`, `MYSQLPORT`, `MYSQLDATABASE`, `MYSQLUSER`, `MYSQLPASSWORD`
+  - Database Priority 3: `DATABASE_URL` (or `MYSQL_URL`)
+- **Database Fallback Invariant**: Production **never** silently defaults to `127.0.0.1` / localhost. If database configuration is missing in production, a descriptive exception is thrown and logged server-side.
+- **Base Path Invariant**: The application dynamically resolves its base path via `base_path_url()`. On local WAMP, it evaluates to `/Secure360`. On production (domain root), it evaluates to `""`. All assets (`asset()`) and internal links (`url()`) automatically adapt without hardcoding.
+- **Error Handling Invariant**: When `APP_DEBUG=false`, internal stack traces, database credentials, and raw exceptions are masked behind a generic 500 error page / JSON payload. Full diagnostic errors are logged server-side to `error_log`.
 - **Health Verification**: Verify deployment via `GET /api/v1/health`. It returns HTTP 200 with database connection status and PHP version.
 
