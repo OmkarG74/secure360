@@ -20,7 +20,7 @@ class AttendanceController extends Controller
         $orgId = Auth::organisationId() ?? 1;
         $db = Database::getConnection();
 
-        // 1. Fetch complete attendance records with joined relations
+        // 1. Fetch complete attendance records with joined relations (ONLY_FULL_GROUP_BY compatible)
         $stmtRecords = $db->prepare(
             "SELECT att.*, 
                     u.full_name as guard_name, u.employee_code as guard_badge, u.photo_url as guard_photo,
@@ -32,11 +32,13 @@ class AttendanceController extends Controller
              JOIN users u ON g.user_id = u.id
              LEFT JOIN sites s ON att.site_id = s.id
              LEFT JOIN contract_guard_assignments cga ON att.assignment_id = cga.id
-             LEFT JOIN contracts c ON (cga.contract_id = c.id OR (att.assignment_id IS NULL AND c.site_id = att.site_id AND c.status = 0))
-             LEFT JOIN contract_shifts cs ON (cga.contract_shift_id = cs.id)
-             LEFT JOIN customers cust ON (c.customer_id = cust.id OR s.customer_id = cust.id)
+             LEFT JOIN contracts c ON c.id = COALESCE(
+                 cga.contract_id,
+                 (SELECT c2.id FROM contracts c2 WHERE c2.site_id = att.site_id AND c2.status = 0 AND c2.deleted_at IS NULL LIMIT 1)
+             )
+             LEFT JOIN contract_shifts cs ON cs.id = cga.contract_shift_id
+             LEFT JOIN customers cust ON cust.id = COALESCE(s.customer_id, c.customer_id)
              WHERE att.organization_id = :org_id
-             GROUP BY att.id
              ORDER BY att.check_in_at DESC
              LIMIT 500"
         );
