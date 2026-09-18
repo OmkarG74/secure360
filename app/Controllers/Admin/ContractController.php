@@ -15,6 +15,8 @@ use App\Models\ContractShift;
 use App\Models\Customer;
 use App\Models\Guard;
 use App\Models\Site;
+use PDO;
+use PDOException;
 
 /**
  * Contract Operations Controller
@@ -302,14 +304,14 @@ class ContractController extends Controller
             $existingShiftsStmt = $db->prepare("SELECT * FROM contract_shifts WHERE contract_id = :id");
             $existingShiftsStmt->execute(['id' => $id]);
             $existingShifts = [];
-            foreach ($existingShiftsStmt->fetchAll(PDO::FETCH_ASSOC) as $s) {
+            foreach ($existingShiftsStmt->fetchAll(\PDO::FETCH_ASSOC) as $s) {
                 $existingShifts[(int)$s['id']] = $s;
             }
 
             $existingAssignmentsStmt = $db->prepare("SELECT * FROM contract_guard_assignments WHERE contract_id = :id");
             $existingAssignmentsStmt->execute(['id' => $id]);
             $existingAssignments = [];
-            foreach ($existingAssignmentsStmt->fetchAll(PDO::FETCH_ASSOC) as $a) {
+            foreach ($existingAssignmentsStmt->fetchAll(\PDO::FETCH_ASSOC) as $a) {
                 $existingAssignments[(int)$a['id']] = $a;
             }
 
@@ -321,7 +323,7 @@ class ContractController extends Controller
 
                 $refAttStmt = $db->prepare("SELECT DISTINCT assignment_id FROM attendance WHERE assignment_id IN ($placeholders)");
                 $refAttStmt->execute($cgaIds);
-                foreach ($refAttStmt->fetchAll(PDO::FETCH_COLUMN) as $refId) {
+                foreach ($refAttStmt->fetchAll(\PDO::FETCH_COLUMN) as $refId) {
                     if ($refId !== null) {
                         $referencedAssignmentIds[(int)$refId] = true;
                     }
@@ -329,7 +331,7 @@ class ContractController extends Controller
 
                 $refLiveStmt = $db->prepare("SELECT DISTINCT assignment_id FROM guard_live_locations WHERE assignment_id IN ($placeholders)");
                 $refLiveStmt->execute($cgaIds);
-                foreach ($refLiveStmt->fetchAll(PDO::FETCH_COLUMN) as $refId) {
+                foreach ($refLiveStmt->fetchAll(\PDO::FETCH_COLUMN) as $refId) {
                     if ($refId !== null) {
                         $referencedAssignmentIds[(int)$refId] = true;
                     }
