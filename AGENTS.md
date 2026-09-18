@@ -98,7 +98,8 @@ The database `secure360_v2` is the single source of truth:
 - **Safe Flutter Deserialization**: Mobile response parsing must use defensive validation (`_parseResponse<T>()`), safely handling `null` fields and non-JSON HTML error responses without Dart type-cast crashes.
 - **Authentication**: Bearer tokens are stored as SHA-256 hashes in `api_tokens`. Plain 64-character tokens are sent in `Authorization: Bearer <token>`.
 - **CORS Support**: `Router.php` handles preflight `OPTIONS` requests automatically.
-- **Local Network Support**: The API must support connections from Android emulators (`10.0.2.2`) and physical Wi-Fi devices.
+- **Production API URL**: The deployed Railway production API endpoint is `https://secure360-production.up.railway.app/api/v1`. `ApiConfig.baseUrl` defaults directly to this production endpoint while remaining dynamically overridable via `--dart-define=API_BASE_URL=...` for local testing.
+- **Local Network Support**: The API also supports connections from Android emulators (`10.0.2.2/Secure360/api/v1`) and physical Wi-Fi devices.
 
 ---
 

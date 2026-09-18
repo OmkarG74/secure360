@@ -335,9 +335,14 @@ function addGuardRow(presetData = null) {
         siteOptions += `<option value="${s.id}" data-customer="${s.customer_id}" ${isVisible} ${isSelected}>${s.site_name}</option>`;
     });
 
+    const assignmentIdVal = presetData && presetData.assignment_id ? String(presetData.assignment_id) : '';
+    const shiftIdVal = presetData && presetData.shift_id ? String(presetData.shift_id) : '';
+
     const card = document.createElement('div');
     card.className = 'assignment-card';
     card.innerHTML = `
+        <input type="hidden" class="assignment-id-input" name="assignments[${rowIndex}][assignment_id]" value="${assignmentIdVal}">
+        <input type="hidden" class="shift-id-input" name="assignments[${rowIndex}][shift_id]" value="${shiftIdVal}">
         <div class="assignment-card-header">
             <span class="assignment-card-title">
                 <svg width="15" height="15" fill="none" stroke="#2563eb" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
@@ -399,12 +404,16 @@ function reindexRows() {
         const displayNum = idx + 1;
         r.querySelector('.assignment-card-title-text').textContent = `Guard Assignment #${displayNum}`;
         
+        const assignmentInput = r.querySelector('.assignment-id-input');
+        const shiftIdInput = r.querySelector('.shift-id-input');
         const guardSel = r.querySelector('.assignment-guard-select');
         const shiftInput = r.querySelector('.assignment-shift-name');
         const startInput = r.querySelector('.assignment-start-time');
         const endInput = r.querySelector('.assignment-end-time');
         const siteSel = r.querySelector('.assignment-site-select');
 
+        if (assignmentInput) assignmentInput.name = `assignments[${idx}][assignment_id]`;
+        if (shiftIdInput) shiftIdInput.name = `assignments[${idx}][shift_id]`;
         if (guardSel) guardSel.name = `assignments[${idx}][guard_id]`;
         if (shiftInput) shiftInput.name = `assignments[${idx}][shift_name]`;
         if (startInput) startInput.name = `assignments[${idx}][start_time]`;

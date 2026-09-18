@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/config/api_config.dart';
 import '../../../core/services/api_service.dart';
 import '../../duty/screens/home_dashboard_screen.dart';
 
@@ -240,7 +241,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 24),
                 const Text(
-                  'Connected via Secure360 Core PHP REST API\nEmulator: 10.0.2.2 / Wi-Fi: Local IP',
+                  'Connected to Secure360 Cloud Backend\n${ApiConfig.baseUrl}',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), height: 1.4),
                 ),
