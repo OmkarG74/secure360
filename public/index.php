@@ -26,9 +26,11 @@ if (file_exists($envFile)) {
             [$key, $value] = explode('=', $line, 2);
             $key = trim($key);
             $value = trim($value, " \t\n\r\0\x0B\"'");
-            putenv("{$key}={$value}");
-            $_ENV[$key] = $value;
-            $_SERVER[$key] = $value;
+            if (getenv($key) === false) {
+                putenv("{$key}={$value}");
+                $_ENV[$key] = $value;
+                $_SERVER[$key] = $value;
+            }
         }
     }
 }
@@ -47,13 +49,14 @@ class_alias(\App\Core\Session::class, 'Session');
 class_alias(\App\Core\View::class, 'View');
 
 // 4. Configure error reporting based on environment
-$debug = config('app.debug', true);
+$debug = config('app.debug', false);
 if ($debug) {
     error_reporting(E_ALL);
     ini_set('display_errors', '1');
 } else {
-    error_reporting(0);
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
     ini_set('display_errors', '0');
+    ini_set('log_errors', '1');
 }
 
 // Set timezone

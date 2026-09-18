@@ -16,8 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Enable essential Apache modules
-RUN a2enmod rewrite headers remoteip
+# 2. Ensure strictly one MPM (mpm_prefork) is enabled for mod_php and enable required modules
+RUN rm -f /etc/apache2/mods-enabled/mpm_event.* \
+          /etc/apache2/mods-enabled/mpm_worker.* \
+    && a2enmod mpm_prefork rewrite headers remoteip
 
 # 3. Use production PHP configuration
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
@@ -52,6 +54,9 @@ RUN { \
     echo '    CustomLog ${APACHE_LOG_DIR}/access.log combined'; \
     echo '</VirtualHost>'; \
 } > /etc/apache2/sites-available/000-default.conf
+
+# Validate Apache configuration at build time (fails the build if any syntax error or multiple MPMs exist)
+RUN apache2ctl configtest
 
 # 5. Set working directory and copy application source code
 WORKDIR /var/www/html

@@ -108,3 +108,27 @@ The database `secure360_v2` is the single source of truth:
 - **Ignore Platform Local Files**: Never commit machine-specific paths (e.g. `mobile/android/local.properties`, `*.iml`, `.idea/`, `.vscode/`).
 - **Database Migrations**: Every database change requires a numbered SQL script in `database/migrations/` (e.g. `002_add_field.sql`).
 - **Contract Integrity**: Any API payload change must be reflected in `docs/API_CONTRACT.md`.
+
+---
+
+## 7. Production Deployment & Hosting Invariants (Railway)
+
+- **Docker Runtime**: Railway deployment uses the root `Dockerfile` based on `php:8.2-apache`.
+- **No Host-Level Start Command**: Railway's host runtime does not have PHP installed. **NEVER** set a custom start command such as `php -S 0.0.0.0:$PORT -t public public/index.php` in Railway Settings. Apache itself starts as PID 1 via `docker-entrypoint.sh` executing `apache2-foreground`.
+- **Apache Document Root**: The web root MUST be `/var/www/html/public`. The application root `/var/www/html` contains `app/`, `routes/`, `resources/`, etc., which are strictly protected from public access.
+- **Front Controller & Rewrites**: `public/index.php` handles all incoming requests. Apache `AllowOverride All` is enabled for `/var/www/html/public`, allowing `public/.htaccess` to manage rewrite rules, forward `Authorization` headers, and set security headers.
+- **Dynamic Port Binding**: Railway injects `$PORT` dynamically (e.g. 8080, 80). `docker-entrypoint.sh` automatically updates Apache's `ports.conf` and `<VirtualHost>` to listen on `$PORT`.
+- **Strict File Permissions**: Only `storage/` and `public/uploads/` are writable by `www-data` (mode 775). All other application code is read-only to the web server.
+- **Required PHP Extensions**: `pdo`, `pdo_mysql`, `mysqli`.
+- **Production Environment Variables in Railway**:
+  - `APP_ENV=production`
+  - `APP_DEBUG=false`
+  - `APP_URL=https://<your-railway-domain>.up.railway.app`
+  - `JWT_SECRET=<generate-a-64-character-random-hex-key>`
+  - `DB_HOST` (or Railway MySQL `MYSQLHOST`)
+  - `DB_PORT` (or Railway MySQL `MYSQLPORT`, default 3306)
+  - `DB_NAME` (or `DB_DATABASE` or `MYSQLDATABASE`, e.g. `railway` or `secure360_v2`)
+  - `DB_USER` (or `DB_USERNAME` or `MYSQLUSER`, default `root`)
+  - `DB_PASS` (or `DB_PASSWORD` or `MYSQLPASSWORD`)
+- **Health Verification**: Verify deployment via `GET /api/v1/health`. It returns HTTP 200 with database connection status and PHP version.
+

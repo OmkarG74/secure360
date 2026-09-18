@@ -6,11 +6,19 @@ declare(strict_types=1);
  * Application Settings Configuration
  */
 
+$isProduction = (getenv('APP_ENV') === 'production');
+$appDebugEnv = getenv('APP_DEBUG');
+$debug = $appDebugEnv !== false ? filter_var($appDebugEnv, FILTER_VALIDATE_BOOLEAN) : !$isProduction;
+
+$railwayDomain = getenv('RAILWAY_PUBLIC_DOMAIN');
+$defaultUrl = $railwayDomain ? 'https://' . rtrim($railwayDomain, '/') : 'http://localhost/Secure360';
+$appUrl = getenv('APP_URL') ?: $defaultUrl;
+
 return [
     'name' => getenv('APP_NAME') ?: 'Secure360',
     'env' => getenv('APP_ENV') ?: 'development',
-    'debug' => filter_var(getenv('APP_DEBUG') ?: true, FILTER_VALIDATE_BOOLEAN),
-    'url' => getenv('APP_URL') ?: 'http://localhost/Secure360',
+    'debug' => $debug,
+    'url' => $appUrl,
     'timezone' => getenv('APP_TIMEZONE') ?: 'UTC',
     'locale' => getenv('APP_LOCALE') ?: 'en',
     
