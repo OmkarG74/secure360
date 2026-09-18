@@ -15,6 +15,7 @@ use App\Core\Router;
 
 // 1. Public landing & informational routes
 $router->get('/', [HomeController::class, 'index']);
+$router->get('/timezone-diagnostic', [\App\Controllers\Api\HealthController::class, 'timezoneDiagnostic']);
 
 // 2. Authentication routes (Superadmin & Admin shared auth entry point)
 $router->get('/login', [AuthController::class, 'showLogin']);

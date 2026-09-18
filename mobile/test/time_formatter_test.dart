@@ -63,5 +63,33 @@ void main() {
         equals('10:00 PM - 06:00 AM'),
       );
     });
+
+    test('Requirement 7: 2026-09-18 13:00:00 interpreted and displayed as Indian time', () {
+      // 1. Backend timestamp without timezone representing IST
+      expect(
+        TimeFormatter.formatDateTime('2026-09-18 13:00:00'),
+        equals('18-Sep-26 01:00 PM'),
+      );
+      expect(
+        TimeFormatter.formatTime('13:00:00'),
+        equals('01:00 PM'),
+      );
+
+      // 2. UTC ISO string converted accurately to IST (+05:30)
+      expect(
+        TimeFormatter.formatDateTime('2026-09-18T07:30:00Z'),
+        equals('18-Sep-26 01:00 PM'),
+      );
+
+      // 3. Explicit IST offset preserved
+      expect(
+        TimeFormatter.formatDateTime('2026-09-18T13:00:00+05:30'),
+        equals('18-Sep-26 01:00 PM'),
+      );
+
+      // 4. Prevent double conversion
+      expect(TimeFormatter.formatTime('01:00 PM'), equals('01:00 PM'));
+      expect(TimeFormatter.formatTime('1:00 pm'), equals('1:00 PM'));
+    });
   });
 }

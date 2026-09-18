@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+// Enforce application timezone standard: Asia/Kolkata (IST, UTC+05:30)
+if (date_default_timezone_get() !== 'Asia/Kolkata') {
+    date_default_timezone_set('Asia/Kolkata');
+}
+
 use App\Core\Auth;
 use App\Core\Session;
 use App\Core\View;

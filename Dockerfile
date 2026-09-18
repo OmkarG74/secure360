@@ -5,10 +5,14 @@
 
 FROM php:8.2-apache
 
+ENV TZ=Asia/Kolkata
+
 # 1. Install system dependencies & PHP MySQL extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libzip-dev \
     unzip \
+    tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && docker-php-ext-install -j$(nproc) \
         mysqli \
         pdo \
@@ -32,7 +36,7 @@ RUN { \
     echo "upload_max_filesize = 20M"; \
     echo "post_max_size = 25M"; \
     echo "max_execution_time = 60"; \
-    echo "date.timezone = UTC"; \
+    echo "date.timezone = Asia/Kolkata"; \
     echo "session.cookie_httponly = 1"; \
     echo "session.use_strict_mode = 1"; \
     echo "log_errors = On"; \

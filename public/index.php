@@ -59,8 +59,8 @@ if ($debug) {
     ini_set('log_errors', '1');
 }
 
-// Set timezone
-date_default_timezone_set(config('app.timezone', 'UTC'));
+// Set timezone (Strict Asia/Kolkata standard)
+date_default_timezone_set(config('app.timezone', 'Asia/Kolkata'));
 
 // 5. Initialize session
 \App\Core\Session::start();
