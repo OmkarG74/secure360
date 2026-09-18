@@ -26,9 +26,10 @@ $bodyProp->setAccessible(true);
 $bodyProp->setValue($request, json_decode($payload, true));
 
 $response = new class extends \App\Core\Response {
-    public function json(array $data, int $statusCode = 200): void {
+    public function json(array $data, ?int $statusCode = null): void {
         echo json_encode($data, JSON_PRETTY_PRINT) . PHP_EOL;
     }
+
 };
 
 $controller = new \App\Controllers\Api\Guard\GuardAuthController($request, $response);

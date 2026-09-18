@@ -364,6 +364,7 @@ class ApiService {
   /// Check Out of Site
   static Future<ApiResponse<Map<String, dynamic>>> checkOut({
     int? attendanceId,
+    int? selfieId,
     required double latitude,
     required double longitude,
     String? address,
@@ -381,6 +382,10 @@ class ApiService {
       if (attendanceId != null) {
         bodyMap['attendance_id'] = attendanceId;
       }
+      if (selfieId != null) {
+        bodyMap['selfie_id'] = selfieId;
+      }
+
 
       final response = await http
           .post(
@@ -479,12 +484,14 @@ class ApiService {
               'latitude': latitude,
               'longitude': longitude,
               'accuracy': accuracy,
+              'accuracy_meters': accuracy,
               'speed': speed,
               'heading': heading,
               'battery_level': batteryLevel,
               'is_charging': isCharging,
               'activity_type': activityType ?? 'patrol',
             }),
+
           )
           .timeout(const Duration(seconds: 10));
 

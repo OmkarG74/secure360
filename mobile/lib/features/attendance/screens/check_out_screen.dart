@@ -7,35 +7,31 @@ import '../../../core/services/location_service.dart';
 import '../../../core/utils/distance_formatter.dart';
 import '../../../core/utils/time_formatter.dart';
 
-class CheckInScreen extends StatefulWidget {
-  final int siteId;
+class CheckOutScreen extends StatefulWidget {
+  final int attendanceId;
   final String siteName;
-  final String? siteAddress;
-  final int? assignmentId;
-  final String? shiftName;
+  final int? siteId;
   final double? siteLatitude;
   final double? siteLongitude;
-  final String? startTime;
-  final String? endTime;
+  final String? checkInTime;
+  final String? shiftName;
 
-  const CheckInScreen({
+  const CheckOutScreen({
     super.key,
-    required this.siteId,
+    required this.attendanceId,
     required this.siteName,
-    this.siteAddress,
-    this.assignmentId,
-    this.shiftName,
+    this.siteId,
     this.siteLatitude,
     this.siteLongitude,
-    this.startTime,
-    this.endTime,
+    this.checkInTime,
+    this.shiftName,
   });
 
   @override
-  State<CheckInScreen> createState() => _CheckInScreenState();
+  State<CheckOutScreen> createState() => _CheckOutScreenState();
 }
 
-class _CheckInScreenState extends State<CheckInScreen> {
+class _CheckOutScreenState extends State<CheckOutScreen> {
   final _notesController = TextEditingController();
   final _picker = ImagePicker();
 
@@ -66,7 +62,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     super.dispose();
   }
 
-  /// Request and acquire real device GPS coordinates
+  /// Acquire current device GPS coordinates and calculate distance to assigned post
   Future<void> _fetchLiveGps() async {
     setState(() {
       _isLocating = true;
@@ -115,63 +111,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     }
   }
 
-  /// Check shift timing availability
-  Map<String, dynamic> _getShiftStatus() {
-    if (widget.startTime == null || widget.endTime == null) {
-      return {'allowed': true, 'state': 'active', 'message': 'Shift is active.'};
-    }
-
-    final now = DateTime.now();
-    final startParts = widget.startTime!.split(':').map(int.parse).toList();
-    final endParts = widget.endTime!.split(':').map(int.parse).toList();
-
-    final nowMinutes = now.hour * 60 + now.minute;
-    final startMinutes = startParts[0] * 60 + startParts[1];
-    final endMinutes = endParts[0] * 60 + endParts[1];
-
-    final formattedStart = TimeFormatter.formatTime(widget.startTime!);
-
-    // Daytime shift (e.g. 08:00 to 16:00)
-    if (startMinutes <= endMinutes) {
-      if (nowMinutes < startMinutes) {
-        return {
-          'allowed': false,
-          'state': 'before_shift',
-          'message': 'Your shift starts at $formattedStart.',
-        };
-      }
-      if (nowMinutes > endMinutes) {
-        return {
-          'allowed': false,
-          'state': 'after_shift',
-          'message': 'Your assigned shift has ended.',
-        };
-      }
-      return {'allowed': true, 'state': 'active', 'message': 'Shift is active.'};
-    }
-
-    // Overnight shift (e.g. 22:00 to 06:00)
-    if (nowMinutes >= startMinutes || nowMinutes <= endMinutes) {
-      return {'allowed': true, 'state': 'active', 'message': 'Shift is active.'};
-    }
-
-    final midpoint = endMinutes + ((startMinutes - endMinutes) ~/ 2);
-    if (nowMinutes <= midpoint) {
-      return {
-        'allowed': false,
-        'state': 'after_shift',
-        'message': 'Your assigned shift has ended.',
-      };
-    }
-
-    return {
-      'allowed': false,
-      'state': 'before_shift',
-      'message': 'Your shift starts at $formattedStart.',
-    };
-  }
-
-  /// Capture mandatory verification selfie using device front camera
+  /// Capture mandatory fresh front-camera checkout selfie
   Future<void> _captureSelfie() async {
     setState(() {
       _isCapturingSelfie = true;
@@ -204,26 +144,20 @@ class _CheckInScreenState extends State<CheckInScreen> {
     }
   }
 
-  /// Submit full check-in flow: upload selfie -> submit check-in -> start telemetry
-  Future<void> _submitCheckIn() async {
-    final shiftStatus = _getShiftStatus();
-    if (shiftStatus['allowed'] == false) {
-      setState(() => _submissionError = shiftStatus['message']);
-      return;
-    }
-
+  /// Complete checkout flow: fresh GPS -> fresh selfie upload -> API checkout -> stop tracking
+  Future<void> _submitCheckOut() async {
     if (_currentPosition == null) {
-      setState(() => _submissionError = 'Real device GPS location is required. Please tap "Refresh".');
+      setState(() => _submissionError = 'Device GPS location is required. Please tap "Refresh GPS".');
       return;
     }
 
     if (_distanceMeters != null && !_isWithinGeofence) {
-      setState(() => _submissionError = 'You are outside your assigned post area. Move closer to check in.');
+      setState(() => _submissionError = 'You are outside your assigned post area. Return to the assigned post before checking out.');
       return;
     }
 
     if (_selfieFile == null) {
-      setState(() => _submissionError = 'A front-camera verification selfie is required before checking in.');
+      setState(() => _submissionError = 'A newly taken front-camera checkout selfie is required.');
       return;
     }
 
@@ -232,24 +166,25 @@ class _CheckInScreenState extends State<CheckInScreen> {
       _submissionError = null;
     });
 
-    int? selfieId;
+    int? checkoutSelfieId;
 
-    // Step 1: Upload Selfie to Backend
+    // Step 1: Upload fresh checkout selfie
     try {
       final selfieResponse = await ApiService.submitSelfie(
         filePath: _selfieFile!.path,
+        attendanceId: widget.attendanceId,
       );
 
       if (selfieResponse.success && selfieResponse.data != null) {
         final rawId = selfieResponse.data!['selfie_id'];
         if (rawId != null) {
-          selfieId = rawId is int ? rawId : int.tryParse(rawId.toString());
+          checkoutSelfieId = rawId is int ? rawId : int.tryParse(rawId.toString());
         }
       } else {
         if (!mounted) return;
         setState(() {
           _isSubmitting = false;
-          _submissionError = 'Selfie upload failed: ${selfieResponse.message}';
+          _submissionError = 'Checkout selfie upload failed: ${selfieResponse.message}';
         });
         return;
       }
@@ -257,31 +192,30 @@ class _CheckInScreenState extends State<CheckInScreen> {
       if (!mounted) return;
       setState(() {
         _isSubmitting = false;
-        _submissionError = 'Failed to upload verification selfie: $e';
+        _submissionError = 'Failed to upload checkout selfie: $e';
       });
       return;
     }
 
-    // Step 2: Record Check-In
-    final checkInResponse = await ApiService.checkIn(
-      siteId: widget.siteId,
-      assignmentId: widget.assignmentId,
-      selfieId: selfieId,
+    // Step 2: Submit checkout request to backend
+    final checkOutResponse = await ApiService.checkOut(
+      attendanceId: widget.attendanceId,
+      selfieId: checkoutSelfieId,
       latitude: _currentPosition!.latitude,
       longitude: _currentPosition!.longitude,
-      address: widget.siteAddress ?? widget.siteName,
+      address: widget.siteName,
       notes: _notesController.text.trim(),
     );
 
     if (!mounted) return;
 
-    if (checkInResponse.success) {
-      // Step 3: Start live location tracking
-      LocationService.startLiveTracking();
+    if (checkOutResponse.success) {
+      // Step 3: Stop live location telemetry after successful checkout
+      LocationService.stopLiveTracking();
 
       setState(() => _isSubmitting = false);
 
-      // Show confirmation dialog then navigate to dashboard
+      // Show confirmation dialog then navigate back to dashboard
       await showDialog(
         context: context,
         barrierDismissible: false,
@@ -291,7 +225,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
             children: [
               Icon(Icons.check_circle, color: Color(0xFF10B981), size: 28),
               SizedBox(width: 10),
-              Text('Check-In Verified', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              Text('Check-Out Verified', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             ],
           ),
           content: Column(
@@ -299,12 +233,12 @@ class _CheckInScreenState extends State<CheckInScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Duty commenced at ${widget.siteName}.',
+                'Duty ended at ${widget.siteName}.',
                 style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
               ),
               const SizedBox(height: 8),
               const Text(
-                '• Real-time GPS coordinates logged.\n• Guard verification selfie uploaded.\n• Live patrol telemetry is now active.',
+                '• Fresh checkout selfie verified.\n• Final GPS position recorded.\n• Live patrol tracking has stopped.\n• Status updated to OFF-DUTY.',
                 style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
               ),
             ],
@@ -319,7 +253,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 backgroundColor: const Color(0xFF2563EB),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('Go to Duty Dashboard', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: const Text('Return to Home', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -327,16 +261,13 @@ class _CheckInScreenState extends State<CheckInScreen> {
     } else {
       setState(() {
         _isSubmitting = false;
-        _submissionError = checkInResponse.message;
+        _submissionError = checkOutResponse.message;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final shiftStatus = _getShiftStatus();
-    final isShiftActive = shiftStatus['allowed'] == true;
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -347,7 +278,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
-          'Duty Post Check-In',
+          'Duty Post Check-Out',
           style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
@@ -356,7 +287,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Site & Shift Summary Card
+            // Active Duty Summary Card
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -372,24 +303,16 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: isShiftActive ? const Color(0xFFEFF6FF) : const Color(0xFFFEF2F2),
+                          color: const Color(0xFFFEF2F2),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          widget.shiftName ?? 'Assigned Shift',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: isShiftActive ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
-                          ),
+                          widget.shiftName ?? 'Active Shift',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
                         ),
                       ),
                       const Spacer(),
-                      if (widget.startTime != null && widget.endTime != null)
-                        Text(
-                          TimeFormatter.formatTimeRange(widget.startTime!, widget.endTime!),
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                        ),
+                      const Text('Completing Duty', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -397,36 +320,11 @@ class _CheckInScreenState extends State<CheckInScreen> {
                     widget.siteName,
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                   ),
-                  if (widget.siteAddress != null && widget.siteAddress!.isNotEmpty) ...[
+                  if (widget.checkInTime != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      widget.siteAddress!,
+                      'Checked in: ${TimeFormatter.formatDateTime(widget.checkInTime!)}',
                       style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                    ),
-                  ],
-
-                  // Shift status banner if not active
-                  if (!isShiftActive) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF2F2),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFFCA5A5)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.schedule, size: 18, color: Color(0xFFDC2626)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              shiftStatus['message'] as String,
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF991B1B)),
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                   ],
                 ],
@@ -434,7 +332,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Step 1: Real GPS Coordinates & Geofence Card
+            // Step 1: Real GPS Check & Geofence Verification Card
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -454,7 +352,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                     children: [
                       Icon(
                         _currentPosition != null
-                            ? (_isWithinGeofence ? Icons.gps_fixed : Icons.warning_amber_rounded)
+                            ? (_isWithinGeofence ? Icons.check_circle : Icons.warning_amber_rounded)
                             : Icons.gps_not_fixed,
                         color: _currentPosition != null
                             ? (_isWithinGeofence ? const Color(0xFF10B981) : const Color(0xFFDC2626))
@@ -463,7 +361,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       ),
                       const SizedBox(width: 8),
                       const Text(
-                        'Device GPS Location',
+                        'Location Verification',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
                       ),
                       const Spacer(),
@@ -477,11 +375,12 @@ class _CheckInScreenState extends State<CheckInScreen> {
                         TextButton.icon(
                           onPressed: _fetchLiveGps,
                           icon: const Icon(Icons.refresh, size: 16, color: Color(0xFF2563EB)),
-                          label: const Text('Refresh', style: TextStyle(fontSize: 12, color: Color(0xFF2563EB))),
+                          label: const Text('Refresh GPS', style: TextStyle(fontSize: 12, color: Color(0xFF2563EB))),
                         ),
                     ],
                   ),
                   const SizedBox(height: 8),
+
                   if (_locationError != null) ...[
                     Container(
                       padding: const EdgeInsets.all(10),
@@ -527,7 +426,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                             ),
                             const SizedBox(height: 4),
                             const Text(
-                              'You are outside your assigned post area. Move closer to check in.',
+                              'You are outside your assigned post area. Return to the assigned post before checking out.',
                               style: TextStyle(fontSize: 12, color: Color(0xFFB91C1C), height: 1.3),
                             ),
                           ],
@@ -550,8 +449,8 @@ class _CheckInScreenState extends State<CheckInScreen> {
                                 Text(
                                   _distanceMeters != null
                                       ? 'Within Assigned Area (${DistanceFormatter.formatDistance(_distanceMeters)} away)'
-                                      : 'GPS Location Acquired',
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF166534)),
+                                      : 'GPS Position Acquired',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF166534)),
                                 ),
                               ],
                             ),
@@ -565,14 +464,14 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       ),
                     ],
                   ] else ...[
-                    const Text('Acquiring real-time GPS fix...', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                    const Text('Acquiring current GPS location...', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
                   ],
                 ],
               ),
             ),
             const SizedBox(height: 16),
 
-            // Step 2: Front Camera Selfie Card
+            // Step 2: Fresh Front-Camera Checkout Selfie Card
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -591,14 +490,14 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       Icon(Icons.camera_front, color: Color(0xFF2563EB), size: 20),
                       SizedBox(width: 8),
                       Text(
-                        'Front-Camera Selfie Verification',
+                        'Fresh Checkout Selfie Verification',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Photo verification confirms the guard is physically present at the post.',
+                    'A freshly taken selfie is required at checkout to verify your post handover.',
                     style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                   ),
                   const SizedBox(height: 12),
@@ -637,7 +536,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.camera_alt, color: Colors.white, size: 18),
                         label: Text(
-                          _isCapturingSelfie ? 'Opening Front Camera...' : 'Capture Front Selfie',
+                          _isCapturingSelfie ? 'Opening Camera...' : 'Take Checkout Selfie',
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -658,7 +557,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Step 3: Field Notes
+            // Step 3: Handover remarks / notes
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -669,17 +568,19 @@ class _CheckInScreenState extends State<CheckInScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Field Notes (Optional)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A))),
+                  const Text(
+                    'Handover Remarks (Optional)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _notesController,
                     maxLines: 2,
                     decoration: InputDecoration(
-                      hintText: 'e.g. Relieved Guard John at Gate 1; Weather clear',
+                      hintText: 'e.g. Relieved by Sarah; all posts secured.',
                       hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
-                      contentPadding: const EdgeInsets.all(12),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
@@ -691,7 +592,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Error banner
+            // Submission Error Banner
             if (_submissionError != null) ...[
               Container(
                 padding: const EdgeInsets.all(12),
@@ -702,12 +603,12 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.error_outline, size: 20, color: Color(0xFFDC2626)),
+                    const Icon(Icons.error, size: 20, color: Color(0xFFDC2626)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _submissionError!,
-                        style: const TextStyle(color: Color(0xFF991B1B), fontSize: 13),
+                        style: const TextStyle(color: Color(0xFF991B1B), fontSize: 13, fontWeight: FontWeight.w500),
                       ),
                     ),
                   ],
@@ -716,28 +617,29 @@ class _CheckInScreenState extends State<CheckInScreen> {
               const SizedBox(height: 16),
             ],
 
-            // Submit Button
+            // Confirm & Check Out Button
             SizedBox(
               height: 50,
-              child: ElevatedButton.icon(
-                onPressed: (_isSubmitting || _currentPosition == null || _selfieFile == null || !isShiftActive || !_isWithinGeofence)
-                    ? null
-                    : _submitCheckIn,
-                icon: _isSubmitting
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.check_circle_outline, color: Colors.white),
-                label: Text(
-                  _isSubmitting ? 'Uploading & Checking In...' : 'Confirm & Check In to Duty',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
+              child: ElevatedButton(
+                onPressed: _isSubmitting ? null : _submitCheckOut,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  disabledBackgroundColor: const Color(0xFFCBD5E1),
+                  backgroundColor: const Color(0xFFDC2626),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   elevation: 0,
                 ),
+                child: _isSubmitting
+                    ? const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                          SizedBox(width: 12),
+                          Text('Verifying & Checking Out...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                        ],
+                      )
+                    : const Text('Confirm & Check Out', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
               ),
             ),
+            const SizedBox(height: 24),
           ],
         ),
       ),

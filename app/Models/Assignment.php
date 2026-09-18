@@ -23,13 +23,23 @@ class Assignment extends Model
         $sql = "SELECT a.*, 
                        s.site_name, s.site_code, s.site_address, s.latitude, s.longitude,
                        cs.shift_name, cs.shift_code, cs.start_time, cs.end_time,
-                       c.contract_code, cust.name as customer_name
+                       c.contract_code, c.start_date, c.end_date, cust.name as customer_name
                 FROM {$this->table} a
                 JOIN sites s ON a.site_id = s.id
                 JOIN contract_shifts cs ON a.contract_shift_id = cs.id
                 JOIN contracts c ON a.contract_id = c.id
                 JOIN customers cust ON c.customer_id = cust.id
-                WHERE a.guard_id = :guard_id AND a.deleted_at IS NULL";
+                WHERE a.guard_id = :guard_id 
+                  AND a.deleted_at IS NULL
+                  AND a.status = 0
+                  AND c.status = 0
+                  AND c.deleted_at IS NULL
+                  AND s.status = 0
+                  AND s.deleted_at IS NULL
+                  AND cs.status = 0
+                  AND cs.deleted_at IS NULL
+                  AND c.start_date <= CURDATE()
+                  AND (c.end_date IS NULL OR c.end_date >= CURDATE())";
 
         $params = ['guard_id' => $guardId];
 

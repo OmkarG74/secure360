@@ -10,6 +10,33 @@ class LocationService {
 
   static bool get isTracking => _isTracking;
 
+  // Real-time tracking and sync state
+  static Position? lastPosition;
+  static DateTime? lastPositionTime;
+  static DateTime? lastSyncTime;
+  static bool lastSyncSuccess = false;
+  static String? lastSyncError;
+
+  /// Check location permission status
+  static Future<LocationPermission> checkPermission() async {
+    return await Geolocator.checkPermission();
+  }
+
+  /// Request location permission
+  static Future<LocationPermission> requestPermission() async {
+    return await Geolocator.requestPermission();
+  }
+
+  /// Open device app settings
+  static Future<bool> openAppSettings() async {
+    return await Geolocator.openAppSettings();
+  }
+
+  /// Open system location settings
+  static Future<bool> openLocationSettings() async {
+    return await Geolocator.openLocationSettings();
+  }
+
   /// Fetch current GPS position with full permission and error handling
   static Future<Position?> getCurrentLocation({
     LocationAccuracy accuracy = LocationAccuracy.high,
@@ -26,7 +53,7 @@ class LocationService {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        throw Exception('Location permission was denied. Please allow location access to check in.');
+        throw Exception('Location permission was denied. Please allow location access to verify your post.');
       }
     }
 
@@ -38,14 +65,21 @@ class LocationService {
 
     // 3. Attempt to get current position
     try {
-      return await Geolocator.getCurrentPosition(
+      final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: accuracy,
         timeLimit: timeout,
       );
+      lastPosition = pos;
+      lastPositionTime = DateTime.now();
+      debugPrint('[Secure360 Location] GPS Acquired: (${pos.latitude}, ${pos.longitude}), accuracy: ±${pos.accuracy.toStringAsFixed(1)}m');
+      return pos;
     } catch (e) {
       // Fallback to last known position if current timed out
       final lastKnown = await Geolocator.getLastKnownPosition();
       if (lastKnown != null) {
+        lastPosition = lastKnown;
+        lastPositionTime = DateTime.now();
+        debugPrint('[Secure360 Location] Last known fallback: (${lastKnown.latitude}, ${lastKnown.longitude})');
         return lastKnown;
       }
       rethrow;
@@ -99,12 +133,21 @@ class LocationService {
           activityType: 'patrol',
         );
 
-        if (kDebugMode && response.success) {
-          debugPrint('[Secure360 Telemetry] Ping sent: (${position.latitude}, ${position.longitude})');
+        if (response.success) {
+          lastSyncTime = DateTime.now();
+          lastSyncSuccess = true;
+          lastSyncError = null;
+          if (kDebugMode) {
+            debugPrint('[Secure360 Telemetry] Ping sent: (${position.latitude}, ${position.longitude})');
+          }
+        } else {
+          lastSyncSuccess = false;
+          lastSyncError = response.message;
         }
       }
     } catch (e) {
-      // Silently handle telemetry network or GPS glitches without disrupting guard experience
+      lastSyncSuccess = false;
+      lastSyncError = e.toString().replaceAll('Exception: ', '');
       debugPrint('[Secure360 Telemetry] Ping failed: $e');
     }
   }

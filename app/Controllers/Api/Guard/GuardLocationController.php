@@ -30,7 +30,7 @@ class GuardLocationController extends Controller
         $body = $this->request->getBody();
         $latitude = isset($body['latitude']) ? (float)$body['latitude'] : null;
         $longitude = isset($body['longitude']) ? (float)$body['longitude'] : null;
-        $accuracy = isset($body['accuracy_meters']) ? (float)$body['accuracy_meters'] : null;
+        $accuracy = isset($body['accuracy_meters']) ? (float)$body['accuracy_meters'] : (isset($body['accuracy']) ? (float)$body['accuracy'] : null);
         $address = (string)($body['address'] ?? '');
         $assignmentId = isset($body['assignment_id']) ? (int)$body['assignment_id'] : null;
         $attendanceId = isset($body['attendance_id']) ? (int)$body['attendance_id'] : null;
@@ -39,6 +39,25 @@ class GuardLocationController extends Controller
             $this->json(['success' => false, 'message' => 'Latitude and Longitude are required', 'status_code' => 422], 422);
             return;
         }
+
+        // Auto-link active duty session if not explicitly passed by client
+        if ($attendanceId === null) {
+            $db = \App\Core\Database::getConnection();
+            $attStmt = $db->prepare(
+                "SELECT id, assignment_id FROM attendance 
+                 WHERE guard_id = :guard_id AND status = 0 AND check_out_at IS NULL 
+                 ORDER BY check_in_at DESC LIMIT 1"
+            );
+            $attStmt->execute(['guard_id' => (int)$guard['guard_id']]);
+            $open = $attStmt->fetch(\PDO::FETCH_ASSOC);
+            if ($open) {
+                $attendanceId = (int)$open['id'];
+                if ($assignmentId === null && !empty($open['assignment_id'])) {
+                    $assignmentId = (int)$open['assignment_id'];
+                }
+            }
+        }
+
 
         $locationModel = new GuardLiveLocation();
         $id = $locationModel->recordLocation(

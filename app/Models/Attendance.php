@@ -41,9 +41,13 @@ class Attendance extends Model
      */
     public function getGuardHistory(int $guardId, ?string $startDate = null, ?string $endDate = null): array
     {
-        $sql = "SELECT att.*, s.site_name, s.site_code 
+        $sql = "SELECT att.*, 
+                       s.site_name, s.site_code, s.site_address, s.latitude as site_latitude, s.longitude as site_longitude,
+                       cs.shift_name, cs.start_time, cs.end_time
                 FROM {$this->table} att
                 LEFT JOIN sites s ON att.site_id = s.id
+                LEFT JOIN contract_guard_assignments cga ON att.assignment_id = cga.id
+                LEFT JOIN contract_shifts cs ON cga.contract_shift_id = cs.id
                 WHERE att.guard_id = :guard_id";
 
         $params = ['guard_id' => $guardId];
@@ -71,9 +75,15 @@ class Attendance extends Model
     public function getOpenAttendance(int $guardId): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT * FROM {$this->table} 
-             WHERE guard_id = :guard_id AND status = 0 AND check_out_at IS NULL 
-             ORDER BY check_in_at DESC 
+            "SELECT att.*, 
+                    s.site_name, s.site_code, s.site_address, s.latitude as site_latitude, s.longitude as site_longitude,
+                    cs.shift_name, cs.start_time, cs.end_time
+             FROM {$this->table} att
+             LEFT JOIN sites s ON att.site_id = s.id
+             LEFT JOIN contract_guard_assignments cga ON att.assignment_id = cga.id
+             LEFT JOIN contract_shifts cs ON cga.contract_shift_id = cs.id
+             WHERE att.guard_id = :guard_id AND att.status = 0 AND att.check_out_at IS NULL 
+             ORDER BY att.check_in_at DESC 
              LIMIT 1"
         );
         $stmt->execute(['guard_id' => $guardId]);
@@ -81,3 +91,4 @@ class Attendance extends Model
         return $result ?: null;
     }
 }
+
