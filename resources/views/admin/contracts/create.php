@@ -19,7 +19,7 @@ $existingAssignments = $existingAssignments ?? [];
     </a>
 
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.75rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title">Create Contract</h1>
             <p class="page-header-desc">Enter contract details and assign guards to sites and shifts.</p>

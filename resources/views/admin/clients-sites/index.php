@@ -16,7 +16,7 @@ $inactiveCount = $inactiveCount ?? 0;
     <!-- Page Header -->
     <div class="page-header">
         <div>
-            <h1 class="page-header-title">Clients &amp; Accounts</h1>
+            <h1 class="page-header-title" style="margin-bottom: 1rem;">Clients &amp; Accounts</h1>
         </div>
     </div>
 

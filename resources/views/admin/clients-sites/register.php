@@ -14,7 +14,7 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
     </a>
 
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.75rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title">Register Client</h1>
             <p class="page-header-desc">Enter client account details and register one or more physical site posts.</p>

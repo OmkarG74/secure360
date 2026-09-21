@@ -154,11 +154,9 @@ foreach ($organizations as $org) {
 
 <div class="page-container">
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.5rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title">Tenant Organisations</h1>
-            <p style="font-size: 0.8125rem; color: #64748b; margin-top: 0.25rem;">Manage and monitor Secure360 tenant customer organisations.</p>
-        </div>
     </div>
 
     <?php App\Core\View::component('components/alerts'); ?>

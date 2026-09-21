@@ -21,7 +21,7 @@ $requiredGuards = max(1, (int)($contract['required_guard_count'] ?? 4));
     </a>
 
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.75rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title">Edit Contract</h1>
             <p class="page-header-desc">Modify contract parameters, coverage specifications, and guard assignments.</p>

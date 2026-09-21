@@ -27,7 +27,7 @@ $totalRecords = count($records);
 .attendance-container {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.25rem;
     width: 100%;
 }
 
@@ -37,6 +37,7 @@ $totalRecords = count($records);
     align-items: center;
     flex-wrap: wrap;
     gap: 1rem;
+    margin-bottom: 0;
 }
 
 .page-title {
@@ -606,7 +607,6 @@ $totalRecords = count($records);
     <div class="page-header-row">
         <div>
             <h1 class="page-title">Attendance &amp; Field Telemetry</h1>
-            <p class="page-subtitle">Live GPS mapping of duty posts and operational attendance records.</p>
         </div>
     </div>
 

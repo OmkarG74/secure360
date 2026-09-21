@@ -10,10 +10,9 @@ $activeTab = $activeTab ?? 'account';
 
 <div class="page-container">
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.75rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title">Settings</h1>
-            <p class="page-header-desc">Manage your Secure360 account, system preferences, and configuration.</p>
         </div>
     </div>
 

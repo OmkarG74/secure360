@@ -14,7 +14,7 @@ $orgId = (int)($org['id'] ?? 0);
     </a>
 
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.75rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title">Edit Organisation</h1>
             <p class="page-header-desc">Update tenant details, contact credentials, and registered office profile.</p>

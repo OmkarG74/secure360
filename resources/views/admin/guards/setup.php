@@ -20,7 +20,7 @@ $hasPhoto = !empty($guard['photo_url']);
     </a>
 
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.75rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title"><?= e($pageTitleText) ?></h1>
             <p class="page-header-desc"><?= $isEdit ? 'Update guard account and assignment details.' : 'Register guard profile, upload photo credentials, and provision mobile app login.' ?></p>

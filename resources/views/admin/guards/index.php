@@ -17,7 +17,7 @@ $onDutyCount = $onDutyCount ?? 0;
 
 <div class="page-container">
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.5rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title">Guards</h1>
         </div>

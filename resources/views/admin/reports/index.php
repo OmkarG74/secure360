@@ -25,15 +25,10 @@ if ($preset === 'yesterday') {
 
 <div class="page-container">
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.5rem;">
+    <div class="page-header">
         <div>
-            <h1 class="page-header-title">Operational Reports &amp; Analytics</h1>
-            <p style="font-size: 0.8125rem; color: #64748b; margin-top: 0.25rem;">
-                Period: <strong style="color: #0f172a;"><?= e($periodLabel) ?></strong>
-                <?php if ($searchQuery !== ''): ?>
-                    &bull; Filtering by: <strong style="color: #2563eb;">"<?= e($searchQuery) ?>"</strong>
-                <?php endif; ?>
-            </p>
+            <h1 class="page-header-title" style="margin-bottom: 1.2rem;">Operational Reports &amp; Analytics</h1>
+            
         </div>
     </div>
 

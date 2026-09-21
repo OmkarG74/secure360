@@ -12,7 +12,7 @@ $inactiveCount = $inactiveCount ?? 0;
 ?>
 
 <div class="page-container">
-    <div class="page-header" style="margin-bottom: 1.5rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title">Client Contracts &amp; Coverage</h1>
         </div>

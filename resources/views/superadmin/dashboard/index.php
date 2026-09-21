@@ -346,7 +346,6 @@ $activePct = $m['totalOrgs'] > 0 ? round(($m['activeOrgs'] / $m['totalOrgs']) * 
     <div class="sa-header-row">
         <div class="sa-title-group">
             <h1>Good morning, Super Administrator</h1>
-            <p>Platform overview and tenant organisation management.</p>
         </div>
         <div class="sa-date-badge">
             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
