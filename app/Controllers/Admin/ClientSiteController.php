@@ -172,7 +172,7 @@ class ClientSiteController extends Controller
                     $sName = trim((string)$siteInput['site_name']);
                     $sCode = !empty($siteInput['site_code']) 
                         ? trim((string)$siteInput['site_code']) 
-                        : 'SITE-' . strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $sName), 0, 4)) . '-' . rand(100, 999);
+                        : $siteModel->getNextSiteCode($orgId);
 
                     $siteModel->create([
                         'organization_id' => $orgId,
@@ -307,11 +307,11 @@ class ClientSiteController extends Controller
         }
 
         $siteCode = trim((string)$this->request->input('site_code', ''));
+        $siteModel = new Site();
         if ($siteCode === '') {
-            $siteCode = 'SITE-' . strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $siteName), 0, 4)) . '-' . rand(100, 999);
+            $siteCode = $siteModel->getNextSiteCode($orgId);
         }
 
-        $siteModel = new Site();
         $siteModel->create([
             'organization_id' => $orgId,
             'customer_id' => $customerId,

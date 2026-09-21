@@ -61,4 +61,31 @@ class Site extends Model
         $result = $stmt->fetch();
         return $result ?: null;
     }
+
+    /**
+     * Generate the next sequential site code for an organisation.
+     * Codes are unique per organisation (composite unique key on organization_id + site_code).
+     * Uses MAX of the numeric suffix so gaps from deleted records never cause duplicates.
+     */
+    public function getNextSiteCode(int $organisationId): string
+    {
+        $stmt = $this->db->prepare(
+            "SELECT site_code FROM {$this->table}
+             WHERE organization_id = :org_id
+               AND site_code LIKE 'SITE-%'
+               AND site_code REGEXP '^SITE-[0-9]+$'"
+        );
+        $stmt->execute(['org_id' => $organisationId]);
+        $codes = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+        $maxNum = 100;
+        foreach ($codes as $code) {
+            if (preg_match('/^SITE-(\d+)$/', $code, $m)) {
+                $maxNum = max($maxNum, (int)$m[1]);
+            }
+        }
+
+        return 'SITE-' . str_pad((string)($maxNum + 1), 3, '0', STR_PAD_LEFT);
+    }
 }
+
