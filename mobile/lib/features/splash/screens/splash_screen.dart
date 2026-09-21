@@ -88,41 +88,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Branded Shield Logo Container
-                Container(
-                  width: 90,
-                  height: 90,
-                  decoration: BoxDecoration(
-                    color: const Color(0x262563EB),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF3B82F6), width: 2),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x662563EB),
-                        blurRadius: 24,
-                        spreadRadius: 4,
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.shield_outlined,
-                      size: 48,
-                      color: Color(0xFF60A5FA),
-                    ),
-                  ),
+                // Branded Official Logo (replaces generic icon and text)
+                Image.asset(
+                  'assets/images/logo.png',
+                  width: 260,
+                  fit: BoxFit.contain,
                 ),
-                const SizedBox(height: 24),
-                const Text(
-                  'SECURE360',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 3,
-                  ),
-                ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 12),
                 const Text(
                   'FIELD GUARD TERMINAL',
                   style: TextStyle(
