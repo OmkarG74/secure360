@@ -7,6 +7,8 @@ namespace App\Controllers\Admin;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
+use App\Core\Request;
+use App\Core\Response;
 use PDO;
 
 /**
@@ -191,6 +193,158 @@ class AttendanceController extends Controller
             'records' => $records,
             'dutySites' => $dutySites,
             'guardLocations' => $guardLocations,
+        ], 'layouts/admin');
+    }
+
+    /**
+     * Display detailed attendance record with manual selfie inspection
+     */
+    public function show(?Request $request = null, ?Response $response = null, array $params = []): void
+    {
+        $orgId = Auth::organisationId() ?? 1;
+        $id = (int)($params['id'] ?? 0);
+
+        if ($id <= 0) {
+            $this->setFlash('error', 'Invalid attendance record identifier.');
+            $this->redirect('/admin/attendance');
+            return;
+        }
+
+        $db = Database::getConnection();
+
+        // 1. Fetch complete attendance record with joined guard, user, site, customer, contract, shift, assignment
+        $stmt = $db->prepare(
+            "SELECT att.*, 
+                    u.full_name as guard_name, u.employee_code as guard_badge, u.photo_url as guard_photo,
+                    u.phone as guard_phone, u.email as guard_email,
+                    g.status as guard_status,
+                    s.site_name, s.site_code, s.site_address, s.zone_gate,
+                    s.latitude as site_latitude, s.longitude as site_longitude,
+                    cust.name as customer_name, cust.client_code,
+                    c.contract_code, c.extra_notes as contract_notes,
+                    cs.shift_name, cs.start_time as shift_start, cs.end_time as shift_end,
+                    cga.status as assignment_status, cga.notes as assignment_notes
+             FROM attendance att
+             JOIN guards g ON att.guard_id = g.id
+             JOIN users u ON g.user_id = u.id
+             LEFT JOIN sites s ON att.site_id = s.id
+             LEFT JOIN contract_guard_assignments cga ON att.assignment_id = cga.id
+             LEFT JOIN contracts c ON c.id = COALESCE(
+                 cga.contract_id,
+                 (SELECT c2.id FROM contracts c2 WHERE c2.site_id = att.site_id AND c2.status = 0 AND c2.deleted_at IS NULL LIMIT 1)
+             )
+             LEFT JOIN contract_shifts cs ON cs.id = cga.contract_shift_id
+             LEFT JOIN customers cust ON cust.id = COALESCE(s.customer_id, c.customer_id)
+             WHERE att.id = :id AND att.organization_id = :org_id
+             LIMIT 1"
+        );
+        $stmt->execute(['id' => $id, 'org_id' => $orgId]);
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$record) {
+            $this->setFlash('error', 'Attendance record not found or access denied.');
+            $this->redirect('/admin/attendance');
+            return;
+        }
+
+        // 2. Fetch Check-In Selfie
+        $checkinSelfie = null;
+        if (!empty($record['selfie_id'])) {
+            $sStmt = $db->prepare("SELECT * FROM selfies WHERE id = :id AND organization_id = :org_id LIMIT 1");
+            $sStmt->execute(['id' => (int)$record['selfie_id'], 'org_id' => $orgId]);
+            $checkinSelfie = $sStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        if (!$checkinSelfie) {
+            $sStmt = $db->prepare(
+                "SELECT * FROM selfies 
+                 WHERE attendance_id = :att_id AND organization_id = :org_id AND verification_status = 'checkin'
+                 ORDER BY id ASC LIMIT 1"
+            );
+            $sStmt->execute(['att_id' => $id, 'org_id' => $orgId]);
+            $checkinSelfie = $sStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        if (!$checkinSelfie) {
+            $sStmt = $db->prepare(
+                "SELECT * FROM selfies 
+                 WHERE attendance_id = :att_id AND organization_id = :org_id
+                 ORDER BY id ASC LIMIT 1"
+            );
+            $sStmt->execute(['att_id' => $id, 'org_id' => $orgId]);
+            $checkinSelfie = $sStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        // 3. Fetch Check-Out Selfie
+        $checkoutSelfie = null;
+        $coStmt = $db->prepare(
+            "SELECT * FROM selfies 
+             WHERE attendance_id = :att_id AND organization_id = :org_id AND verification_status = 'checkout'
+             ORDER BY id DESC LIMIT 1"
+        );
+        $coStmt->execute(['att_id' => $id, 'org_id' => $orgId]);
+        $checkoutSelfie = $coStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if (!$checkoutSelfie && $checkinSelfie) {
+            $coStmt2 = $db->prepare(
+                "SELECT * FROM selfies 
+                 WHERE attendance_id = :att_id AND organization_id = :org_id AND id != :ci_id
+                 ORDER BY id DESC LIMIT 1"
+            );
+            $coStmt2->execute(['att_id' => $id, 'org_id' => $orgId, 'ci_id' => $checkinSelfie['id']]);
+            $checkoutSelfie = $coStmt2->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        // 4. Calculate Distances and Geofence Verification Status
+        $siteLat = $record['site_latitude'] !== null ? (float)$record['site_latitude'] : null;
+        $siteLng = $record['site_longitude'] !== null ? (float)$record['site_longitude'] : null;
+
+        $checkinDistanceMeters = null;
+        $checkinLocationVerified = null;
+        if ($siteLat !== null && $siteLng !== null && $record['check_in_latitude'] !== null && $record['check_in_longitude'] !== null) {
+            $checkinDistanceMeters = round(geo_distance_meters((float)$record['check_in_latitude'], (float)$record['check_in_longitude'], $siteLat, $siteLng), 1);
+            $checkinLocationVerified = $checkinDistanceMeters <= 200.0;
+        }
+
+        $checkoutDistanceMeters = null;
+        $checkoutLocationVerified = null;
+        if ($siteLat !== null && $siteLng !== null && $record['check_out_latitude'] !== null && $record['check_out_longitude'] !== null) {
+            $checkoutDistanceMeters = round(geo_distance_meters((float)$record['check_out_latitude'], (float)$record['check_out_longitude'], $siteLat, $siteLng), 1);
+            $checkoutLocationVerified = $checkoutDistanceMeters <= 200.0;
+        }
+
+        // 5. Calculate Duty Duration
+        $durationFormatted = 'Not Available';
+        $isDurationActive = false;
+        if (!empty($record['check_in_at'])) {
+            $checkInTs = strtotime($record['check_in_at']);
+            if (!empty($record['check_out_at'])) {
+                $checkOutTs = strtotime($record['check_out_at']);
+                $diff = max(0, $checkOutTs - $checkInTs);
+                $hrs = floor($diff / 3600);
+                $mins = floor(($diff % 3600) / 60);
+                $durationFormatted = "{$hrs}h {$mins}m";
+            } elseif ((int)$record['status'] === 0) {
+                $diff = max(0, time() - $checkInTs);
+                $hrs = floor($diff / 3600);
+                $mins = floor(($diff % 3600) / 60);
+                $durationFormatted = "{$hrs}h {$mins}m (Active)";
+                $isDurationActive = true;
+            }
+        }
+
+        $this->render('admin/attendance/show', [
+            'pageTitle' => 'Attendance Details #' . $record['id'],
+            'organisationId' => $orgId,
+            'record' => $record,
+            'checkinSelfie' => $checkinSelfie,
+            'checkoutSelfie' => $checkoutSelfie,
+            'checkinDistanceMeters' => $checkinDistanceMeters,
+            'checkinLocationVerified' => $checkinLocationVerified,
+            'checkoutDistanceMeters' => $checkoutDistanceMeters,
+            'checkoutLocationVerified' => $checkoutLocationVerified,
+            'durationFormatted' => $durationFormatted,
+            'isDurationActive' => $isDurationActive,
         ], 'layouts/admin');
     }
 }

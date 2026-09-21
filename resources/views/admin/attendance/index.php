@@ -526,6 +526,29 @@ $totalRecords = count($records);
 }
 .status-cancelled .status-dot { background: #ef4444; }
 
+/* Table Action Button */
+.btn-action-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #2563eb;
+    text-decoration: none;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+.btn-action-view:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.1);
+}
+
 /* Pagination Footer */
 .table-footer-pagination {
     padding: 0.875rem 1.25rem;
@@ -743,6 +766,7 @@ $totalRecords = count($records);
                         <th>Check Out</th>
                         <th>Duration</th>
                         <th>Status</th>
+                        <th style="text-align: right;">Action</th>
                     </tr>
                 </thead>
                 <tbody id="attendanceTableBody">
@@ -777,6 +801,7 @@ $totalRecords = count($records);
 const RAW_DUTY_SITES = <?= json_encode($dutySites, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 const RAW_GUARD_LOCATIONS = <?= json_encode($guardLocations, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 const RAW_ATTENDANCE_RECORDS = <?= json_encode($records, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+const ATTENDANCE_BASE_URL = '<?= url('/admin/attendance') ?>';
 
 // Global Map & Table State
 let mapInstance = null;
@@ -1226,6 +1251,12 @@ function renderAttendanceTable() {
                     </span>
                 </td>
                 <td>${statusBadge}</td>
+                <td style="text-align: right;">
+                    <a href="${ATTENDANCE_BASE_URL}/${r.id}" class="btn-action-view" title="View Attendance Details">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                        View
+                    </a>
+                </td>
             </tr>
         `;
     });
