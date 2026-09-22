@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'core/services/api_service.dart';
 import 'core/services/location_service.dart';
+import 'core/services/notification_service.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/splash/screens/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase and Push Notification handlers
+  await NotificationService.initialize();
 
   // Setup global session expiration callback (401)
   ApiService.onSessionExpired = () {
@@ -27,8 +31,21 @@ void main() async {
   runApp(const Secure360App());
 }
 
-class Secure360App extends StatelessWidget {
+class Secure360App extends StatefulWidget {
   const Secure360App({super.key});
+
+  @override
+  State<Secure360App> createState() => _Secure360AppState();
+}
+
+class _Secure360AppState extends State<Secure360App> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService.checkInitialMessage();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

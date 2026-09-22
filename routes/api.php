@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Controllers\Api\Guard\DeviceTokenController;
 use App\Controllers\Api\Guard\GuardAttendanceController;
 use App\Controllers\Api\Guard\GuardAuthController;
 use App\Controllers\Api\Guard\GuardDutyController;
@@ -50,7 +51,17 @@ $router->group([
         $router->post('/guard/location', [GuardLocationController::class, 'submitLocation']);
         $router->post('/guard/selfie', [GuardLocationController::class, 'submitSelfie']);
 
-        // Notifications
-        $router->get('/guard/notifications', [GuardLocationController::class, 'notifications']);
+        // Notifications & Device Registration
+        $router->get('/guard/notifications', [\App\Controllers\Api\Guard\GuardNotificationController::class, 'index']);
+        $router->post('/guard/notifications/{id}/read', [\App\Controllers\Api\Guard\GuardNotificationController::class, 'markRead']);
+        $router->post('/guard/notifications/read-all', [\App\Controllers\Api\Guard\GuardNotificationController::class, 'markAllRead']);
+        $router->post('/guard/device-token', [DeviceTokenController::class, 'register']);
+        $router->post('/guard/device-token/remove', [DeviceTokenController::class, 'remove']);
+        $router->post('/guard/device-token/test', [DeviceTokenController::class, 'testNotification']);
+        $router->get('/guard/device-token/test', [DeviceTokenController::class, 'testNotification']);
+
+        // Admin Notification Management APIs
+        $router->get('/admin/notifications', [\App\Controllers\Api\Admin\AdminNotificationApiController::class, 'index']);
+        $router->post('/admin/notifications/send', [\App\Controllers\Api\Admin\AdminNotificationApiController::class, 'send']);
     });
 });

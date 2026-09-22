@@ -39,6 +39,8 @@ class ApiConfig {
   static const String locationTelemetryEndpoint = '/guard/location';
   static const String selfieUploadEndpoint = '/guard/selfie';
   static const String notificationsEndpoint = '/guard/notifications';
+  static String markNotificationReadEndpoint(int id) => '/guard/notifications/$id/read';
+  static const String markAllNotificationsReadEndpoint = '/guard/notifications/read-all';
 
   // Request Timeouts
   static const Duration connectTimeout = Duration(seconds: 15);

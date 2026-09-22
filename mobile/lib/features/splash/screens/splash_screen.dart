@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../auth/screens/login_screen.dart';
 import '../../duty/screens/home_dashboard_screen.dart';
 
@@ -53,6 +54,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (!mounted) return;
 
     if (profileResponse.success && profileResponse.data != null) {
+      // Sync FCM device token on existing authenticated session
+      NotificationService.syncTokenWithBackend();
+
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const HomeDashboardScreen()),
       );

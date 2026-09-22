@@ -187,6 +187,14 @@ class GuardAuthController extends Controller
             (new ApiToken())->revokeToken($token);
         }
 
+        $body = $this->request->getBody();
+        $fcmToken = trim((string)($body['fcm_token'] ?? ''));
+        if ($fcmToken !== '') {
+            $guard = $GLOBALS['AUTH_GUARD'] ?? null;
+            $userId = (int)($guard['user_id'] ?? $guard['id'] ?? 0);
+            (new \App\Models\UserDeviceToken())->deactivateToken($fcmToken, $userId > 0 ? $userId : null);
+        }
+
         $this->json([
             'success' => true,
             'message' => 'Logged out successfully, token revoked',

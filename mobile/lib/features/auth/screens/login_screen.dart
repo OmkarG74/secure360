@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/config/api_config.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../duty/screens/home_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -46,6 +47,14 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (response.success) {
+      // Confirm authenticated user/session is available, obtain FCM token and register with backend
+      try {
+        await NotificationService.syncTokenWithBackend(force: true);
+      } catch (e) {
+        debugPrint('[LoginScreen] FCM token sync error on login: $e');
+      }
+
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const HomeDashboardScreen()),
       );
@@ -137,10 +146,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
                         autofillHints: const [],
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        cursorColor: const Color(0xFF2563EB),
                         decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.email_outlined, size: 20),
+                          prefixIcon: const Icon(Icons.email_outlined, size: 20, color: Color(0xFF64748B)),
                           hintText: 'guard@apexsecurity.com',
+                          hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                           filled: true,
                           fillColor: const Color(0xFFF8FAFC),
                           border: OutlineInputBorder(
@@ -150,6 +167,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
                           ),
                         ),
                       ),
@@ -167,10 +188,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextField(
                         controller: _passwordController,
                         obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _handleLogin(),
                         autofillHints: const [],
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        cursorColor: const Color(0xFF2563EB),
                         decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                          prefixIcon: const Icon(Icons.lock_outline, size: 20, color: Color(0xFF64748B)),
                           hintText: '••••••••',
+                          hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                           filled: true,
                           fillColor: const Color(0xFFF8FAFC),
                           border: OutlineInputBorder(
@@ -180,6 +210,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
                           ),
                         ),
                       ),

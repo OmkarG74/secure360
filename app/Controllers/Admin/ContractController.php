@@ -15,6 +15,7 @@ use App\Models\ContractShift;
 use App\Models\Customer;
 use App\Models\Guard;
 use App\Models\Site;
+use App\Services\NotificationService;
 use App\Services\SubscriptionService;
 use PDO;
 use PDOException;
@@ -234,6 +235,45 @@ class ContractController extends Controller
             }
 
             $contractModel->commit();
+
+            // Centralized Notification: Dispatch assignment notification to assigned guards
+            try {
+                $siteModel = new Site();
+                $siteData = $siteModel->findById($siteId);
+                $siteName = $siteData['site_name'] ?? 'Assigned Site';
+
+                foreach ($assignments as $row) {
+                    $gId = (int)($row['guard_id'] ?? 0);
+                    if ($gId > 0) {
+                        $sName = trim((string)($row['shift_name'] ?? ''));
+                        if ($sName === '') {
+                            $sName = 'Assigned Shift';
+                        }
+                        NotificationService::sendToGuard(
+                            $gId,
+                            'New Guard Assignment',
+                            "You have been assigned to {$siteName} for {$sName}.",
+                            'contract_assignment',
+                            [
+                                'screen' => 'assignment_details',
+                                'contract_id' => (string)$contractId,
+                                'site_id' => (string)($row['site_id'] ?: $siteId),
+                                'entity_id' => (string)$contractId,
+                            ],
+                            [
+                                'priority' => 'high',
+                                'entity_type' => 'contract',
+                                'entity_id' => $contractId,
+                                'sender_user_id' => Auth::id(),
+                                'organization_id' => $orgId,
+                            ]
+                        );
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log('[ContractController] Notification dispatch failed: ' . $e->getMessage());
+            }
+
             $this->setFlash('success', "Contract '{$contractCode}' with {$requiredGuards} guard assignment slot(s) created successfully.");
             $this->redirect('/admin/contracts');
         } catch (\Throwable $e) {
@@ -604,6 +644,45 @@ class ContractController extends Controller
             }
 
             $contractModel->commit();
+
+            // Centralized Notification: Dispatch update notification to active guards
+            try {
+                $siteModel = new Site();
+                $siteData = $siteModel->findById($siteId);
+                $siteName = $siteData['site_name'] ?? 'Assigned Site';
+
+                foreach ($assignments as $row) {
+                    $gId = (int)($row['guard_id'] ?? 0);
+                    if ($gId > 0) {
+                        $sName = trim((string)($row['shift_name'] ?? ''));
+                        if ($sName === '') {
+                            $sName = 'Updated Shift';
+                        }
+                        NotificationService::sendToGuard(
+                            $gId,
+                            'Shift Updated',
+                            "Your shift assignment at {$siteName} has been updated.",
+                            'shift_changed',
+                            [
+                                'screen' => 'assignment_details',
+                                'contract_id' => (string)$id,
+                                'site_id' => (string)($row['site_id'] ?: $siteId),
+                                'entity_id' => (string)$id,
+                            ],
+                            [
+                                'priority' => 'normal',
+                                'entity_type' => 'contract',
+                                'entity_id' => $id,
+                                'sender_user_id' => Auth::id(),
+                                'organization_id' => $orgId,
+                            ]
+                        );
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log('[ContractController] Notification dispatch failed: ' . $e->getMessage());
+            }
+
             $this->setFlash('success', "Contract updated successfully with {$requiredGuards} guard assignment slot(s).");
             $this->redirect('/admin/contracts');
         } catch (\Throwable $e) {

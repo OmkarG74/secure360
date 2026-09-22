@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../auth/screens/login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -61,6 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirm != true) return;
 
+    await NotificationService.unregisterOnLogout();
     await ApiService.logout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(

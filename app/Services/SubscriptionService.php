@@ -341,12 +341,12 @@ class SubscriptionService
                 'end_date' => $endDate,
             ]);
 
+            $db->commit();
+
             // Notify Org Admin
             $this->notifyAdmins($organizationId, 'subscription_renewed', 'Subscription Renewed',
                 "Your subscription has been renewed successfully for {$guardLimit} guards valid until " . date('d M Y', strtotime($endDate)) . "."
             );
-
-            $db->commit();
 
             return [
                 'subscription_id' => $newSubId,
@@ -355,7 +355,9 @@ class SubscriptionService
                 'total_amount' => $totalAmount,
             ];
         } catch (\Throwable $e) {
-            $db->rollBack();
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             throw $e;
         }
     }
@@ -520,12 +522,12 @@ class SubscriptionService
                 'end_date' => $newEndDate,
             ]);
 
+            $db->commit();
+
             // 6. Notify Org Admins
             $this->notifyAdmins($orgId, 'subscription_updated', 'Subscription Updated',
                 "Your organisation's subscription terms have been updated (#SUB-{$newSubId}, Invoice #{$invoiceNumber})."
             );
-
-            $db->commit();
 
             return [
                 'old_subscription_id' => $oldSubId,
@@ -536,7 +538,9 @@ class SubscriptionService
                 'new_guard_limit' => $newLimit,
             ];
         } catch (\Throwable $e) {
-            $db->rollBack();
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             throw $e;
         }
     }
@@ -644,12 +648,12 @@ class SubscriptionService
                 'invoice_number' => $invoiceNumber,
             ]);
 
-            // In-app notification
+            $db->commit();
+
+            // In-app & push notification dispatched after commit
             $this->notifyAdmins($organizationId, 'guard_limit_updated', 'Guard Limit Updated',
                 "Your organisation's licensed guard capacity has been updated to {$newLimit} guards."
             );
-
-            $db->commit();
 
             return [
                 'previous_limit' => $prevLimit,
@@ -660,7 +664,9 @@ class SubscriptionService
                 'invoice_number' => $invoiceNumber,
             ];
         } catch (\Throwable $e) {
-            $db->rollBack();
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             throw $e;
         }
     }
@@ -779,7 +785,9 @@ class SubscriptionService
                 'new_end_date' => $newEndDate,
             ];
         } catch (\Throwable $e) {
-            $db->rollBack();
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             throw $e;
         }
     }
@@ -938,6 +946,19 @@ class SubscriptionService
                     'message' => $message,
                     'data_json' => $data ? json_encode($data) : null,
                 ]);
+            }
+
+            // Attempt FCM push to admin devices
+            try {
+                $fcm = new FirebaseNotificationService();
+                $fcm->sendToUsers(
+                    array_map('intval', $adminIds),
+                    $title,
+                    $message,
+                    array_merge($data ?? [], ['type' => $type])
+                );
+            } catch (\Throwable) {
+                // FCM failures should not affect transaction
             }
         } catch (\Throwable) {
             // Notification failures should not break the main transaction

@@ -72,8 +72,11 @@ $router->group([
     $router->get('/settings', [SettingsController::class, 'index']);
     $router->post('/settings', [SettingsController::class, 'update']);
 
-    // 8. Notifications Popover API
+    // 8. Notifications Popover API & Alert Management
     $router->get('/notifications', [NotificationController::class, 'index']);
+    $router->get('/notifications/manage', [NotificationController::class, 'manage']);
+    $router->get('/notifications/create', [NotificationController::class, 'createAlertForm']);
+    $router->post('/notifications/create', [NotificationController::class, 'sendAlert']);
     $router->post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
     $router->post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
 

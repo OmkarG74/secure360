@@ -60,6 +60,14 @@ $initials = strtoupper(substr($userName, 0, 1));
                         <div class="notif-empty-title">Loading notifications...</div>
                     </div>
                 </div>
+
+                <!-- Popover Footer -->
+                <div style="padding: 0.65rem 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center;">
+                    <a href="<?= url('/admin/notifications/manage') ?>" style="font-size: 0.75rem; font-weight: 600; color: #2563eb; text-decoration: none; display: inline-flex; align-items: center; gap: 0.25rem;">
+                        <span>View all alerts &amp; history</span>
+                        <span>&rarr;</span>
+                    </a>
+                </div>
             </div>
         </div>
 

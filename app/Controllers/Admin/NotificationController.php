@@ -8,11 +8,14 @@ use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Request;
 use App\Core\Response;
+use App\Models\Guard;
 use App\Models\Notification;
+use App\Services\NotificationService;
 
 /**
  * Admin Notification Controller
  * Manages operational notifications for header notification center popover
+ * and full web administrative alert broadcast & history module.
  */
 class NotificationController extends Controller
 {
@@ -25,7 +28,7 @@ class NotificationController extends Controller
     }
 
     /**
-     * Get recent notifications and unread count for current admin
+     * Get recent notifications and unread count for current admin (header popover API)
      */
     public function index(Request $request = null, Response $response = null): void
     {
@@ -82,7 +85,7 @@ class NotificationController extends Controller
     }
 
     /**
-     * Mark a single notification as read
+     * Mark a single notification as read (popover API)
      */
     public function markRead(string|int $id, Request $request = null, Response $response = null): void
     {
@@ -100,7 +103,7 @@ class NotificationController extends Controller
     }
 
     /**
-     * Mark all notifications as read for the current admin
+     * Mark all notifications as read for the current admin (popover API)
      */
     public function markAllRead(Request $request = null, Response $response = null): void
     {
@@ -113,6 +116,154 @@ class NotificationController extends Controller
             'success' => true,
             'unread_count' => 0,
         ]);
+    }
+
+    /**
+     * Admin Notification History & Audit Management Page
+     * GET /admin/notifications/manage
+     */
+    public function manage(Request $request = null, Response $response = null): void
+    {
+        $orgId = Auth::organisationId() ?? 1;
+
+        // Sanitize and extract query filters
+        $filters = [
+            'type' => trim((string)($this->request->query('type') ?? '')),
+            'priority' => trim((string)($this->request->query('priority') ?? '')),
+            'delivery_status' => trim((string)($this->request->query('delivery_status') ?? '')),
+            'date_from' => trim((string)($this->request->query('date_from') ?? '')),
+            'date_to' => trim((string)($this->request->query('date_to') ?? '')),
+            'search' => trim((string)($this->request->query('search') ?? '')),
+            'recipient_id' => trim((string)($this->request->query('recipient_id') ?? '')),
+        ];
+
+        // Clean empty filters
+        $activeFilters = array_filter($filters, fn($val) => $val !== '');
+
+        // Pagination setup
+        $perPage = 20;
+        $currentPage = max(1, (int)($this->request->query('page') ?? 1));
+        $totalCount = $this->notificationModel->countForAdminHistory($orgId, $activeFilters);
+        $totalPages = max(1, (int)ceil($totalCount / $perPage));
+        $offset = ($currentPage - 1) * $perPage;
+
+        $notifications = $this->notificationModel->findForAdminHistory($orgId, $activeFilters, $perPage, $offset);
+
+        // Fetch guards for filter dropdown
+        $guardModel = new Guard();
+        $guards = $guardModel->allByTenant($orgId);
+
+        $this->render('admin/notifications/index', [
+            'pageTitle' => 'Alerts & Notices - Secure360',
+            'notifications' => $notifications,
+            'guards' => $guards,
+            'filters' => $filters,
+            'totalCount' => $totalCount,
+            'totalRecords' => $totalCount,
+            'currentPage' => $currentPage,
+            'totalPages' => $totalPages,
+            'perPage' => $perPage,
+            'pageSize' => $perPage,
+            'queryParams' => $activeFilters,
+            'baseUrl' => url('/admin/notifications/manage'),
+        ], 'layouts/admin');
+    }
+
+    /**
+     * Render Alert Creation Form
+     * GET /admin/notifications/create
+     */
+    public function createAlertForm(Request $request = null, Response $response = null): void
+    {
+        $orgId = Auth::organisationId() ?? 1;
+
+        $guardModel = new Guard();
+        $guards = $guardModel->allByTenant($orgId);
+
+        $this->render('admin/notifications/create', [
+            'pageTitle' => 'Create Guard Alert - Secure360',
+            'guards' => $guards,
+        ], 'layouts/admin');
+    }
+
+    /**
+     * Dispatch Alert to Guards
+     * POST /admin/notifications/create
+     */
+    public function sendAlert(Request $request = null, Response $response = null): void
+    {
+        $adminId = Auth::id() ?? 0;
+        $orgId = Auth::organisationId() ?? 1;
+
+        $title = trim((string)$this->request->input('title'));
+        $message = trim((string)$this->request->input('message'));
+        $alertType = trim((string)($this->request->input('alert_type') ?? 'general_alert'));
+        $priority = trim((string)($this->request->input('priority') ?? 'normal'));
+        $sendTo = trim((string)($this->request->input('send_to') ?? 'all'));
+        $specificGuardId = (int)$this->request->input('guard_id');
+        $multipleGuardIds = $this->request->input('guard_ids');
+        $schedule = trim((string)($this->request->input('schedule') ?? 'now'));
+
+        // Basic validation
+        if ($title === '' || $message === '') {
+            $this->setFlash('error', 'Please provide both an Alert Title and Message.');
+            $this->redirect('/admin/notifications/create');
+            return;
+        }
+
+        $options = [
+            'priority' => $priority,
+            'sender_user_id' => $adminId,
+            'organization_id' => $orgId,
+            'entity_type' => 'admin_alert',
+        ];
+
+        $data = [
+            'screen' => 'notifications',
+            'type' => $alertType,
+            'priority' => $priority,
+        ];
+
+        try {
+            if ($sendTo === 'specific') {
+                if ($specificGuardId <= 0) {
+                    $this->setFlash('error', 'Please select a guard to receive the alert.');
+                    $this->redirect('/admin/notifications/create');
+                    return;
+                }
+
+                $res = NotificationService::sendToGuard($specificGuardId, $title, $message, $alertType, $data, $options);
+                if (!$res['success']) {
+                    $this->setFlash('error', $res['error'] ?? 'Failed to send alert to selected guard.');
+                    $this->redirect('/admin/notifications/create');
+                    return;
+                }
+
+                $this->setFlash('success', 'Alert successfully sent to the selected guard.');
+            } elseif ($sendTo === 'multiple') {
+                $guardIds = is_array($multipleGuardIds) ? array_map('intval', $multipleGuardIds) : [];
+                $guardIds = array_filter($guardIds, fn($id) => $id > 0);
+
+                if (empty($guardIds)) {
+                    $this->setFlash('error', 'Please select at least one guard.');
+                    $this->redirect('/admin/notifications/create');
+                    return;
+                }
+
+                $res = NotificationService::sendToGuards($guardIds, $title, $message, $alertType, $data, $options);
+                $this->setFlash('success', "Alert dispatched to {$res['successful_dispatches']} guard(s).");
+            } else {
+                // Send to ALL guards in organisation
+                $res = NotificationService::sendToRole('guard', $orgId, $title, $message, $alertType, $data, $options);
+                $this->setFlash('success', "Alert successfully broadcast to all active guards ({$res['successful_dispatches']} sent).");
+            }
+
+            $this->redirect('/admin/notifications/manage');
+        } catch (\Throwable $e) {
+            error_log('[NotificationController] Failed to dispatch alert: ' . $e->getMessage());
+            $this->setFlash('error', 'An error occurred while dispatching the alert: ' . $e->getMessage());
+            $this->redirect('/admin/notifications/create');
+        }
     }
 
     /**

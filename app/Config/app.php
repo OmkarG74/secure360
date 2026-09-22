@@ -54,4 +54,10 @@ return [
         'default_lng' => 73.8567,
         'default_zoom' => 12,
     ],
+
+    // Firebase Cloud Messaging (FCM)
+    'firebase' => [
+        'credentials' => getenv('FIREBASE_CREDENTIALS') ?: 'storage/credentials/infipre360-firebase-adminsdk-fbsvc-2de9932d5b.json',
+        'cache_dir' => 'storage/cache/',
+    ],
 ];

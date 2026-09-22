@@ -1,4 +1,4 @@
-package com.example.secure360_mobile
+package com.infipre.secure360
 
 import io.flutter.embedding.android.FlutterActivity
 

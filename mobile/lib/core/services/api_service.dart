@@ -238,6 +238,8 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_tokenKey);
       await prefs.remove(_userKey);
+      await prefs.remove('secure360_last_fcm_token');
+      await prefs.remove('secure360_last_synced_user_id');
     } catch (e) {
       debugPrint('[Secure360 Auth] Error clearing SharedPreferences: $e');
     }
@@ -776,6 +778,98 @@ class ApiService {
         success: false,
         message: 'Failed to fetch notifications: $e',
         statusCode: 500,
+      );
+    }
+  }
+
+  /// Mark a single notification as read
+  static Future<ApiResponse<Map<String, dynamic>>> markNotificationRead(int id) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.markNotificationReadEndpoint(id)}');
+      final headers = await _buildHeaders();
+      final response = await http.post(url, headers: headers).timeout(ApiConfig.connectTimeout);
+
+      return _parseResponse<Map<String, dynamic>>(
+        response,
+        (data) => data is Map<String, dynamic> ? data : {},
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: 'Failed to mark notification as read: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Mark all notifications as read for current guard
+  static Future<ApiResponse<Map<String, dynamic>>> markAllNotificationsRead() async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.markAllNotificationsReadEndpoint}');
+      final headers = await _buildHeaders();
+      final response = await http.post(url, headers: headers).timeout(ApiConfig.connectTimeout);
+
+      return _parseResponse<Map<String, dynamic>>(
+        response,
+        (data) => data is Map<String, dynamic> ? data : {},
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: 'Failed to mark all notifications as read: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Register FCM Device Token with backend
+  static Future<ApiResponse<Map<String, dynamic>>> registerDeviceToken(
+    String fcmToken, {
+    String deviceType = 'android',
+    String? deviceName,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/guard/device-token');
+      final headers = await _buildHeaders();
+      final body = jsonEncode({
+        'fcm_token': fcmToken,
+        'device_type': deviceType,
+        'device_name': deviceName ?? 'Android Device',
+      });
+      debugPrint('[ApiService] Registering device token: $url, type: $deviceType, authAttached: ${headers.containsKey('Authorization')}');
+      final response = await http
+          .post(url, headers: headers, body: body)
+          .timeout(ApiConfig.connectTimeout);
+
+      return _parseResponse<Map<String, dynamic>>(
+        response,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{},
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: 'Failed to register device token: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Deactivate FCM Device Token on logout
+  static Future<ApiResponse<void>> removeDeviceToken(String fcmToken) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/guard/device-token/remove');
+      final headers = await _buildHeaders();
+      final body = jsonEncode({'fcm_token': fcmToken});
+      final response = await http
+          .post(url, headers: headers, body: body)
+          .timeout(ApiConfig.connectTimeout);
+
+      return _parseResponse<void>(response, null);
+    } catch (_) {
+      return ApiResponse<void>(
+        success: true,
+        message: 'Token cleared locally',
+        statusCode: 200,
       );
     }
   }

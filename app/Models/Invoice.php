@@ -130,6 +130,9 @@ class Invoice extends Model
     {
         static $checked = false;
         if ($checked) return;
+        if ($this->db->inTransaction()) {
+            return;
+        }
         try {
             $cols = $this->db->query("SHOW COLUMNS FROM {$this->table} LIKE 'invoice_type'")->fetchAll();
             if (empty($cols)) {
