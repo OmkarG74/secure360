@@ -30,10 +30,32 @@ $orgId = $currentUser['organization_id'] ?? (\App\Core\Auth::organisationId() ??
 $hour = (int)date('G');
 $greeting = ($hour < 12) ? 'Good morning' : (($hour < 17) ? 'Good afternoon' : 'Good evening');
 $firstName = explode(' ', trim($userName))[0];
+
+// Ola Maps Platform configuration
+$olaApiKey = config('app.maps.ola_api_key', '');
 ?>
 
-<!-- Leaflet CSS for Operational Map -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<!-- MapLibre & Ola Maps Web SDK v2 -->
+<link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://www.unpkg.com/olamaps-web-sdk@latest/dist/olamaps-web-sdk.umd.js"></script>
+<style>
+/* MapLibre Popup Styling for Operational Dashboard */
+.maplibregl-popup-content {
+    padding: 10px 12px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+    border: 1px solid #e2e8f0;
+}
+.maplibregl-popup-close-button {
+    padding: 2px 6px;
+    color: #64748b;
+    font-size: 16px;
+}
+.maplibregl-popup-close-button:hover {
+    color: #0f172a;
+    background: transparent;
+}
+</style>
 
 <div class="dashboard-container">
 
@@ -163,6 +185,16 @@ $firstName = explode(' ', trim($userName))[0];
                     </div>
                     <p style="font-size: 0.875rem; font-weight: 600; color: #334155; margin-bottom: 0.25rem;">Live location data unavailable</p>
                     <p style="font-size: 0.75rem; color: #94a3b8; margin: 0;">Configure GPS coordinates on client sites or wait for guard mobile check-ins.</p>
+                </div>
+            <?php elseif (empty($olaApiKey)): ?>
+                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3.5rem 2rem; text-align: center; color: #64748b; background: #fafafa; border-radius: 8px;">
+                    <div style="width: 44px; height: 44px; border-radius: 50%; background: #eff6ff; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 0.75rem; color: #2563eb;">
+                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                    </div>
+                    <p style="font-size: 0.875rem; font-weight: 600; color: #1e293b; margin-bottom: 0.25rem;">Ola Maps API Key Required</p>
+                    <p style="font-size: 0.75rem; color: #64748b; margin: 0; max-width: 420px;">
+                        Configure <code>OLA_MAPS_API_KEY</code> in your <code>.env</code> file to activate the interactive Krutrim / Ola Maps operational dashboard view.
+                    </p>
                 </div>
             <?php else: ?>
                 <div id="dashboardMap"></div>
@@ -381,63 +413,144 @@ $firstName = explode(' ', trim($userName))[0];
 
 </div>
 
-<!-- Leaflet JS & Map Initialization -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Ola Maps Web SDK v2 Map Initialization -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const mapElement = document.getElementById('dashboardMap');
     if (!mapElement) return;
 
+    const OLA_MAPS_API_KEY = <?= json_encode($olaApiKey ?? '', JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+    if (!OLA_MAPS_API_KEY) {
+        return;
+    }
+
+    if (typeof OlaMaps === 'undefined') {
+        console.warn('[Secure360] Ola Maps Web SDK failed to load from CDN.');
+        mapElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#64748b;font-size:0.875rem;">Unable to load Ola Maps SDK. Please check your network connection.</div>';
+        return;
+    }
+
     const dutySites = <?= json_encode($dutySites, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?> || [];
     const guardLocations = <?= json_encode($guardLocations, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?> || [];
 
-    // Fallback center coordinates
-    let defaultLat = 18.5204, defaultLng = 73.8567, defaultZoom = 11;
+    // Fallback geographic center coordinates (Pune, Maharashtra fallback)
+    const defaultLng = 73.8567;
+    const defaultLat = 18.5204;
+    const defaultZoom = 11;
 
-    const map = L.map('dashboardMap', {
-        zoomControl: true,
-        attributionControl: false
-    }).setView([defaultLat, defaultLng], defaultZoom);
+    let olaMapsInstance;
+    try {
+        olaMapsInstance = new OlaMaps({
+            apiKey: OLA_MAPS_API_KEY
+        });
+    } catch (e) {
+        console.error('[Secure360] Error initializing OlaMaps client:', e);
+        return;
+    }
 
-    // Clean OpenStreetMap Layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19
-    }).addTo(map);
+    let map;
+    try {
+        map = olaMapsInstance.init({
+            style: "https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json",
+            container: 'dashboardMap',
+            center: [defaultLng, defaultLat], // NOTE: [longitude, latitude] for Ola Maps / MapLibre
+            zoom: defaultZoom
+        });
+    } catch (e) {
+        console.error('[Secure360] Error rendering Ola Map:', e);
+        return;
+    }
 
-    const bounds = [];
+    // Add navigation control (zoom controls)
+    if (map && typeof map.addControl === 'function') {
+        try {
+            const NavControl = window.maplibregl?.NavigationControl || (typeof olaMapsInstance.NavigationControl === 'function' ? olaMapsInstance.NavigationControl : null);
+            if (NavControl) {
+                map.addControl(new NavControl({ showCompass: false }), 'top-right');
+            }
+        } catch (ctrlErr) {
+            console.warn('[Secure360] Navigation control skipped:', ctrlErr);
+        }
+    }
 
-    // Custom Blue Pin for Duty Sites
-    const siteIcon = L.divIcon({
-        className: 'custom-site-pin',
-        html: `<div style="width: 28px; height: 28px; border-radius: 50%; background: #2563eb; border: 2px solid #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: #ffffff;">
-                 <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/></svg>
-               </div>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-        popupAnchor: [0, -14]
-    });
+    const boundsCoords = [];
 
-    // Custom Green Pin for Guard On Duty Locations
-    const guardOnDutyIcon = L.divIcon({
-        className: 'custom-guard-on-duty-pin',
-        html: `<div style="width: 24px; height: 24px; border-radius: 50%; background: #16a34a; border: 2px solid #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: #ffffff;">
-                 <span style="width: 7px; height: 7px; border-radius: 50%; background: #ffffff;"></span>
-               </div>`,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
-        popupAnchor: [0, -12]
-    });
+    // Helper: Create custom DOM element for Site Pin (exact existing design)
+    function createSitePinElement(siteName) {
+        const el = document.createElement('div');
+        el.className = 'custom-site-pin';
+        el.title = 'Site: ' + (siteName || '');
+        el.style.cursor = 'pointer';
+        el.innerHTML = `
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: #2563eb; border: 2px solid #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: #ffffff;">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/></svg>
+            </div>
+        `;
+        return el;
+    }
 
-    // Custom Gray Pin for Guard Off Duty Locations
-    const guardOffDutyIcon = L.divIcon({
-        className: 'custom-guard-off-duty-pin',
-        html: `<div style="width: 22px; height: 22px; border-radius: 50%; background: #94a3b8; border: 2px solid #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: #ffffff;">
-                 <span style="width: 6px; height: 6px; border-radius: 50%; background: #ffffff;"></span>
-               </div>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
-        popupAnchor: [0, -11]
-    });
+    // Helper: Create custom DOM element for Guard On Duty Pin (exact existing design)
+    function createGuardOnDutyPinElement(guardName) {
+        const el = document.createElement('div');
+        el.className = 'custom-guard-on-duty-pin';
+        el.title = 'Guard: ' + (guardName || '');
+        el.style.cursor = 'pointer';
+        el.innerHTML = `
+            <div style="width: 24px; height: 24px; border-radius: 50%; background: #16a34a; border: 2px solid #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: #ffffff;">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: #ffffff;"></span>
+            </div>
+        `;
+        return el;
+    }
+
+    // Helper: Create custom DOM element for Guard Off Duty Pin (exact existing design)
+    function createGuardOffDutyPinElement(guardName) {
+        const el = document.createElement('div');
+        el.className = 'custom-guard-off-duty-pin';
+        el.title = 'Guard: ' + (guardName || '');
+        el.style.cursor = 'pointer';
+        el.innerHTML = `
+            <div style="width: 22px; height: 22px; border-radius: 50%; background: #94a3b8; border: 2px solid #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: #ffffff;">
+                <span style="width: 6px; height: 6px; border-radius: 50%; background: #ffffff;"></span>
+            </div>
+        `;
+        return el;
+    }
+
+    function createPopupInstance(htmlContent, offset) {
+        const PopupClass = window.maplibregl?.Popup;
+        if (typeof olaMapsInstance.addPopup === 'function') {
+            return olaMapsInstance.addPopup({ offset: offset || [0, -14], anchor: 'bottom', closeButton: true })
+                .setHTML(htmlContent);
+        } else if (PopupClass) {
+            return new PopupClass({ offset: offset || [0, -14], anchor: 'bottom', closeButton: true })
+                .setHTML(htmlContent);
+        }
+        return null;
+    }
+
+    function addCustomMarker(pinElement, lng, lat, popup) {
+        const MarkerClass = window.maplibregl?.Marker;
+        let marker = null;
+        if (typeof olaMapsInstance.addMarker === 'function') {
+            marker = olaMapsInstance.addMarker({
+                element: pinElement,
+                anchor: 'center'
+            }).setLngLat([lng, lat]);
+        } else if (MarkerClass) {
+            marker = new MarkerClass({
+                element: pinElement,
+                anchor: 'center'
+            }).setLngLat([lng, lat]);
+        }
+        if (marker) {
+            if (popup) {
+                marker.setPopup(popup);
+            }
+            marker.addTo(map);
+        }
+        return marker;
+    }
 
     // Plot Duty Sites
     dutySites.forEach(function(site) {
@@ -445,7 +558,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const lat = parseFloat(site.latitude);
             const lng = parseFloat(site.longitude);
             if (!isNaN(lat) && !isNaN(lng)) {
-                bounds.push([lat, lng]);
+                // COORDINATE INVARIANT: Ola Maps expects [longitude, latitude]
+                boundsCoords.push([lng, lat]);
+
                 const popupContent = `
                     <div style="font-family: inherit; font-size: 0.8125rem; min-width: 170px; line-height: 1.4;">
                         <div style="font-weight: 700; color: #0f172a; margin-bottom: 2px;">${site.site_name}</div>
@@ -454,7 +569,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         ${site.address ? `<div style="font-size: 0.7rem; color: #64748b; border-top: 1px dashed #e2e8f0; padding-top: 4px;">${site.address}</div>` : ''}
                     </div>
                 `;
-                L.marker([lat, lng], { icon: siteIcon }).addTo(map).bindPopup(popupContent);
+
+                const pinEl = createSitePinElement(site.site_name);
+                const popup = createPopupInstance(popupContent, [0, -14]);
+                addCustomMarker(pinEl, lng, lat, popup);
             }
         }
     });
@@ -465,10 +583,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const lat = parseFloat(guard.latitude);
             const lng = parseFloat(guard.longitude);
             if (!isNaN(lat) && !isNaN(lng)) {
-                bounds.push([lat, lng]);
-                const isOnDuty = (guard.status === 0);
-                const currentIcon = isOnDuty ? guardOnDutyIcon : guardOffDutyIcon;
+                // COORDINATE INVARIANT: Ola Maps expects [longitude, latitude]
+                boundsCoords.push([lng, lat]);
 
+                const isOnDuty = (guard.status === 0);
                 const popupContent = `
                     <div style="font-family: inherit; font-size: 0.8125rem; min-width: 170px; line-height: 1.4;">
                         <div style="font-weight: 700; color: #0f172a; margin-bottom: 2px;">${guard.guard_name}</div>
@@ -478,14 +596,38 @@ document.addEventListener('DOMContentLoaded', function() {
                         ${guard.last_update ? `<div style="font-size: 0.675rem; color: #94a3b8; margin-top: 4px; border-top: 1px dashed #e2e8f0; padding-top: 4px;">Updated: ${guard.last_update}</div>` : ''}
                     </div>
                 `;
-                L.marker([lat, lng], { icon: currentIcon }).addTo(map).bindPopup(popupContent);
+
+                const pinEl = isOnDuty ? createGuardOnDutyPinElement(guard.guard_name) : createGuardOffDutyPinElement(guard.guard_name);
+                const popup = createPopupInstance(popupContent, [0, -12]);
+                addCustomMarker(pinEl, lng, lat, popup);
             }
         }
     });
 
     // Auto-fit map viewport to active coordinates
-    if (bounds.length > 0) {
-        map.fitBounds(bounds, { padding: [35, 35], maxZoom: 15 });
+    if (boundsCoords.length > 0 && map && typeof map.fitBounds === 'function') {
+        if (boundsCoords.length === 1) {
+            map.setCenter(boundsCoords[0]);
+            map.setZoom(14);
+        } else {
+            const BoundsClass = window.maplibregl?.LngLatBounds;
+            if (BoundsClass) {
+                const bounds = boundsCoords.reduce((b, coord) => b.extend(coord), new BoundsClass(boundsCoords[0], boundsCoords[0]));
+                map.fitBounds(bounds, { padding: 35, maxZoom: 15 });
+            }
+        }
     }
+
+    // Responsive Map Resize
+    window.addEventListener('resize', function() {
+        if (map && typeof map.resize === 'function') {
+            map.resize();
+        }
+    });
+    setTimeout(function() {
+        if (map && typeof map.resize === 'function') {
+            map.resize();
+        }
+    }, 300);
 });
 </script>
