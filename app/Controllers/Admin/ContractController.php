@@ -138,8 +138,34 @@ class ContractController extends Controller
         $requiredGuards = max(1, (int)$this->request->input('required_guard_count', 1));
         $extraNotes = trim((string)$this->request->input('extra_notes', '')) ?: null;
 
-        if ($customerId <= 0 || $siteId <= 0 || $startDate === '') {
-            $this->setFlash('error', 'Client, Site, and Contract Start Date are required.');
+        if ($customerId <= 0 || $startDate === '') {
+            $this->setFlash('error', 'Client and Contract Start Date are required.');
+            $this->redirect('/admin/contracts/create');
+            return;
+        }
+
+        // If top-level site_id not provided, derive from first assignment row or client's sites
+        if ($siteId <= 0) {
+            $rawAssignments = $this->request->input('assignments');
+            if (is_array($rawAssignments)) {
+                foreach ($rawAssignments as $row) {
+                    if (is_array($row) && !empty($row['site_id']) && (int)$row['site_id'] > 0) {
+                        $siteId = (int)$row['site_id'];
+                        break;
+                    }
+                }
+            }
+        }
+        if ($siteId <= 0) {
+            $siteModel = new Site();
+            $custSites = $siteModel->findByCustomer($customerId, $orgId);
+            if (!empty($custSites)) {
+                $siteId = (int)$custSites[0]['id'];
+            }
+        }
+
+        if ($siteId <= 0) {
+            $this->setFlash('error', 'The selected client has no duty sites. Please configure at least one duty site for this client first.');
             $this->redirect('/admin/contracts/create');
             return;
         }
@@ -309,11 +335,34 @@ class ContractController extends Controller
         }
 
         $customerId = (int)$this->request->input('customer_id', $contract['customer_id']);
-        $siteId = (int)$this->request->input('site_id', $contract['site_id']);
+        $siteId = (int)$this->request->input('site_id', $contract['site_id'] ?? 0);
         $startDate = trim((string)$this->request->input('start_date', $contract['start_date']));
         $endDate = trim((string)$this->request->input('end_date', '')) ?: null;
         $requiredGuards = max(1, (int)$this->request->input('required_guard_count', 1));
         $extraNotes = trim((string)$this->request->input('extra_notes', '')) ?: null;
+
+        // If site_id not posted from top-level, derive from assignments, existing contract, or client's sites
+        if ($siteId <= 0) {
+            $rawAssignments = $this->request->input('assignments');
+            if (is_array($rawAssignments)) {
+                foreach ($rawAssignments as $row) {
+                    if (is_array($row) && !empty($row['site_id']) && (int)$row['site_id'] > 0) {
+                        $siteId = (int)$row['site_id'];
+                        break;
+                    }
+                }
+            }
+        }
+        if ($siteId <= 0 && !empty($contract['site_id'])) {
+            $siteId = (int)$contract['site_id'];
+        }
+        if ($siteId <= 0) {
+            $siteModel = new Site();
+            $custSites = $siteModel->findByCustomer($customerId, $orgId);
+            if (!empty($custSites)) {
+                $siteId = (int)$custSites[0]['id'];
+            }
+        }
 
         // Subscription limit check
         $subService = new SubscriptionService();
@@ -626,6 +675,7 @@ class ContractController extends Controller
                 if (is_array($row)) {
                     $guardId = (int)($row['guard_id'] ?? 0);
                     if ($guardId > 0) {
+                        $assignedSiteId = !empty($row['site_id']) ? (int)$row['site_id'] : $defaultSiteId;
                         $assignments[] = [
                             'assignment_id' => !empty($row['assignment_id']) ? (int)$row['assignment_id'] : null,
                             'shift_id' => !empty($row['shift_id']) ? (int)$row['shift_id'] : null,
@@ -633,7 +683,7 @@ class ContractController extends Controller
                             'shift_name' => trim((string)($row['shift_name'] ?? 'Day Patrol')),
                             'start_time' => trim((string)($row['start_time'] ?? '08:00')),
                             'end_time' => trim((string)($row['end_time'] ?? '16:00')),
-                            'site_id' => (int)($row['site_id'] ?? $defaultSiteId),
+                            'site_id' => $assignedSiteId,
                         ];
                     }
                 }

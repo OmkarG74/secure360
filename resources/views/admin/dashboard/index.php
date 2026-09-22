@@ -434,9 +434,62 @@ document.addEventListener('DOMContentLoaded', function() {
     const guardLocations = <?= json_encode($guardLocations, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?> || [];
 
     // Fallback geographic center coordinates (Pune, Maharashtra fallback)
-    const defaultLng = 73.8567;
-    const defaultLat = 18.5204;
-    const defaultZoom = 11;
+    const fallbackLng = 73.8567;
+    const fallbackLat = 18.5204;
+    const fallbackZoom = 11;
+
+    // Collect all valid [longitude, latitude] coordinates from real Secure360 data
+    // Priority: Configured duty sites and active guard GPS telemetry
+    const allValidCoords = [];
+
+    dutySites.forEach(function(s) {
+        if (s.latitude !== null && s.longitude !== null) {
+            const lat = parseFloat(s.latitude);
+            const lng = parseFloat(s.longitude);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                // COORDINATE INVARIANT: Ola Maps expects [longitude, latitude]
+                allValidCoords.push([lng, lat]);
+            }
+        }
+    });
+
+    guardLocations.forEach(function(g) {
+        if (g.latitude !== null && g.longitude !== null) {
+            const lat = parseFloat(g.latitude);
+            const lng = parseFloat(g.longitude);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                // COORDINATE INVARIANT: Ola Maps expects [longitude, latitude]
+                allValidCoords.push([lng, lat]);
+            }
+        }
+    });
+
+    // Compute dynamic initial center, zoom, and bounding box from real data
+    let initialCenter = [fallbackLng, fallbackLat];
+    let initialZoom = fallbackZoom;
+    let initialBbox = null;
+
+    if (allValidCoords.length === 1) {
+        initialCenter = allValidCoords[0];
+        initialZoom = 14;
+    } else if (allValidCoords.length > 1) {
+        let minLng = allValidCoords[0][0];
+        let maxLng = allValidCoords[0][0];
+        let minLat = allValidCoords[0][1];
+        let maxLat = allValidCoords[0][1];
+
+        for (let i = 1; i < allValidCoords.length; i++) {
+            const lng = allValidCoords[i][0];
+            const lat = allValidCoords[i][1];
+            if (lng < minLng) minLng = lng;
+            if (lng > maxLng) maxLng = lng;
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+        }
+
+        initialCenter = [(minLng + maxLng) / 2, (minLat + maxLat) / 2];
+        initialBbox = [[minLng, minLat], [maxLng, maxLat]];
+    }
 
     let olaMapsInstance;
     try {
@@ -453,8 +506,8 @@ document.addEventListener('DOMContentLoaded', function() {
         map = olaMapsInstance.init({
             style: "https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json",
             container: 'dashboardMap',
-            center: [defaultLng, defaultLat], // NOTE: [longitude, latitude] for Ola Maps / MapLibre
-            zoom: defaultZoom
+            center: initialCenter, // Dynamically computed from real Secure360 data
+            zoom: initialZoom
         });
     } catch (e) {
         console.error('[Secure360] Error rendering Ola Map:', e);
@@ -464,7 +517,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add navigation control (zoom controls)
     if (map && typeof map.addControl === 'function') {
         try {
-            const NavControl = window.maplibregl?.NavigationControl || (typeof olaMapsInstance.NavigationControl === 'function' ? olaMapsInstance.NavigationControl : null);
+            const NavControl = window.OlaMaps?.NavigationControl || window.maplibregl?.NavigationControl || (typeof olaMapsInstance.NavigationControl === 'function' ? olaMapsInstance.NavigationControl : null);
             if (NavControl) {
                 map.addControl(new NavControl({ showCompass: false }), 'top-right');
             }
@@ -472,8 +525,6 @@ document.addEventListener('DOMContentLoaded', function() {
             console.warn('[Secure360] Navigation control skipped:', ctrlErr);
         }
     }
-
-    const boundsCoords = [];
 
     // Helper: Create custom DOM element for Site Pin (exact existing design)
     function createSitePinElement(siteName) {
@@ -518,7 +569,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function createPopupInstance(htmlContent, offset) {
-        const PopupClass = window.maplibregl?.Popup;
+        const PopupClass = window.OlaMaps?.Popup || window.maplibregl?.Popup;
         if (typeof olaMapsInstance.addPopup === 'function') {
             return olaMapsInstance.addPopup({ offset: offset || [0, -14], anchor: 'bottom', closeButton: true })
                 .setHTML(htmlContent);
@@ -530,7 +581,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function addCustomMarker(pinElement, lng, lat, popup) {
-        const MarkerClass = window.maplibregl?.Marker;
+        const MarkerClass = window.OlaMaps?.Marker || window.maplibregl?.Marker;
         let marker = null;
         if (typeof olaMapsInstance.addMarker === 'function') {
             marker = olaMapsInstance.addMarker({
@@ -558,9 +609,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const lat = parseFloat(site.latitude);
             const lng = parseFloat(site.longitude);
             if (!isNaN(lat) && !isNaN(lng)) {
-                // COORDINATE INVARIANT: Ola Maps expects [longitude, latitude]
-                boundsCoords.push([lng, lat]);
-
                 const popupContent = `
                     <div style="font-family: inherit; font-size: 0.8125rem; min-width: 170px; line-height: 1.4;">
                         <div style="font-weight: 700; color: #0f172a; margin-bottom: 2px;">${site.site_name}</div>
@@ -583,9 +631,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const lat = parseFloat(guard.latitude);
             const lng = parseFloat(guard.longitude);
             if (!isNaN(lat) && !isNaN(lng)) {
-                // COORDINATE INVARIANT: Ola Maps expects [longitude, latitude]
-                boundsCoords.push([lng, lat]);
-
                 const isOnDuty = (guard.status === 0);
                 const popupContent = `
                     <div style="font-family: inherit; font-size: 0.8125rem; min-width: 170px; line-height: 1.4;">
@@ -605,15 +650,24 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Auto-fit map viewport to active coordinates
-    if (boundsCoords.length > 0 && map && typeof map.fitBounds === 'function') {
-        if (boundsCoords.length === 1) {
-            map.setCenter(boundsCoords[0]);
-            map.setZoom(14);
-        } else {
-            const BoundsClass = window.maplibregl?.LngLatBounds;
+    if (map && typeof map.fitBounds === 'function' && allValidCoords.length > 0) {
+        if (allValidCoords.length === 1) {
+            if (typeof map.setCenter === 'function') map.setCenter(allValidCoords[0]);
+            if (typeof map.setZoom === 'function') map.setZoom(14);
+        } else if (initialBbox) {
+            const BoundsClass = window.OlaMaps?.LngLatBounds || window.maplibregl?.LngLatBounds;
+            let boundsApplied = false;
             if (BoundsClass) {
-                const bounds = boundsCoords.reduce((b, coord) => b.extend(coord), new BoundsClass(boundsCoords[0], boundsCoords[0]));
-                map.fitBounds(bounds, { padding: 35, maxZoom: 15 });
+                try {
+                    const bounds = new BoundsClass(initialBbox[0], initialBbox[1]);
+                    map.fitBounds(bounds, { padding: 45, maxZoom: 15 });
+                    boundsApplied = true;
+                } catch (bErr) {
+                    console.warn('[Secure360] BoundsClass construction failed, falling back to bbox array:', bErr);
+                }
+            }
+            if (!boundsApplied) {
+                map.fitBounds(initialBbox, { padding: 45, maxZoom: 15 });
             }
         }
     }
