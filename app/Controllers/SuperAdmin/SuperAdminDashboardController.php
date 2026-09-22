@@ -49,6 +49,9 @@ class SuperAdminDashboardController extends Controller
             ];
         }
 
+        $subService = new \App\Services\SubscriptionService();
+        $subMetrics = $subService->getPlatformMetrics();
+
         $this->render('superadmin/dashboard/index', [
             'pageTitle' => 'Superadmin Master Control Panel',
             'user' => Auth::user(),
@@ -59,6 +62,10 @@ class SuperAdminDashboardController extends Controller
                 'newOrgs' => $newOrgs,
                 'totalUsers' => $totalUsers,
                 'totalGuards' => $totalGuards,
+                'expiringSoonSubs' => $subMetrics['expiringSoonSubs'],
+                'expiredSubs' => $subMetrics['expiredSubs'],
+                'totalLicensedGuards' => $subMetrics['totalLicensedGuards'],
+                'totalActiveGuards' => $subMetrics['totalActiveGuards'],
             ],
             'recentOrgs' => $recentOrgs,
             'recentActivity' => $recentActivity,

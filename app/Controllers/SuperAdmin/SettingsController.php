@@ -26,14 +26,22 @@ class SettingsController extends Controller
         $user = $userModel->findWithRole($userId) ?? Auth::user() ?? [];
 
         $activeTab = trim((string)$this->request->query('tab', 'account'));
-        if (!in_array($activeTab, ['account', 'security', 'platform', 'system'], true)) {
+        if (!in_array($activeTab, ['account', 'security', 'platform', 'system', 'billing'], true)) {
             $activeTab = 'account';
         }
+
+        $settingModel = new \App\Models\SystemSetting();
+        $pricePerGuard = $settingModel->getDefaultPricePerGuard();
+        $currency = $settingModel->getCurrency();
+        $expiringDays = $settingModel->getExpiringSoonDays();
 
         $this->render('superadmin/settings/index', [
             'pageTitle' => 'Platform Settings - Superadmin',
             'user' => $user,
             'activeTab' => $activeTab,
+            'pricePerGuard' => $pricePerGuard,
+            'currency' => $currency,
+            'expiringDays' => $expiringDays,
         ], 'layouts/superadmin');
     }
 
@@ -122,6 +130,41 @@ class SettingsController extends Controller
                 case 'system':
                     $this->setFlash('success', 'Global system preferences saved.');
                     $this->redirect('/superadmin/settings?tab=system');
+                    return;
+
+                case 'billing':
+                    $priceInput = trim((string)$this->request->input('price_per_guard', ''));
+                    $currencyInput = strtoupper(trim((string)$this->request->input('currency', 'INR')));
+                    $daysInput = (int)$this->request->input('expiring_soon_days', 15);
+
+                    if ($priceInput === '' || !is_numeric($priceInput)) {
+                        $this->setFlash('error', 'Default price per guard must be a valid numeric amount.');
+                        $this->redirect('/superadmin/settings?tab=billing');
+                        return;
+                    }
+
+                    $price = (float)$priceInput;
+                    if ($price < 0) {
+                        $this->setFlash('error', 'Default price per guard cannot be negative.');
+                        $this->redirect('/superadmin/settings?tab=billing');
+                        return;
+                    }
+
+                    $settingModel = new \App\Models\SystemSetting();
+                    $settingModel->set('subscription_price_per_guard', number_format($price, 2, '.', ''), 'Default subscription price per guard');
+                    $settingModel->set('subscription_currency', $currencyInput ?: 'INR', 'Default billing currency code');
+                    $settingModel->set('subscription_expiring_soon_days', (string)max(1, $daysInput), 'Days before expiry to flag expiring soon');
+
+                    // Audit
+                    $subService = new \App\Services\SubscriptionService();
+                    $subService->logActivity(null, $userId, 'billing_settings_updated', 'Billing Settings Updated', [
+                        'default_price_per_guard' => $price,
+                        'currency' => $currencyInput,
+                        'expiring_soon_days' => $daysInput,
+                    ]);
+
+                    $this->setFlash('success', 'Subscription & Billing default settings saved successfully. Note: This applies to new subscriptions by default.');
+                    $this->redirect('/superadmin/settings?tab=billing');
                     return;
 
                 default:

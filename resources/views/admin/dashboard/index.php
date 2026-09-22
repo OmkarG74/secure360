@@ -44,20 +44,35 @@ $firstName = explode(' ', trim($userName))[0];
         </div>
     </div>
 
+    <?php
+        $sub = $subDetails ?? null;
+        $guardLimit = (int)($sub['guard_limit'] ?? max(30, $m['totalGuards']));
+        $activeGuards = (int)($sub['active_guards'] ?? $m['totalGuards']);
+        $validUntil = !empty($sub['end_date']) ? date('d-M-Y', strtotime($sub['end_date'])) : '—';
+        $subStatus = ucfirst($sub['calculated_status'] ?? 'Active');
+        $isLimitReached = $sub['is_limit_reached'] ?? ($activeGuards >= $guardLimit);
+        $isApproaching = $sub['is_approaching_limit'] ?? (($guardLimit - $activeGuards) <= 3 && !$isLimitReached);
+    ?>
+
     <!-- 2. Compact Operational KPI Strip -->
     <div class="metrics-grid-5">
-        <!-- Total Guards -->
-        <div class="metric-card-compact">
+        <!-- Guard Usage / Subscription -->
+        <div class="metric-card-compact" style="<?= $isLimitReached ? 'border-color: #fecaca; background: #fffdfd;' : '' ?>">
             <div class="metric-header">
-                <span class="metric-label">Total Guards</span>
-                <div class="metric-icon-box blue">
+                <span class="metric-label" style="<?= $isLimitReached ? 'color: #dc2626;' : '' ?>">Guard Usage</span>
+                <a href="<?= url('/admin/billing') ?>" class="metric-icon-box blue" title="Manage Subscription & Billing" style="text-decoration: none;">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                </div>
+                </a>
             </div>
             <div class="metric-value-row">
-                <span class="metric-number"><?= e($m['totalGuards']) ?></span>
+                <span class="metric-number" style="<?= $isLimitReached ? 'color: #dc2626;' : '' ?>"><?= e($activeGuards) ?> <span style="font-size: 0.95rem; font-weight: 600; color: #64748b;">/ <?= $guardLimit ?></span></span>
             </div>
-            <div class="metric-subtext">Operational</div>
+            <div class="metric-subtext" style="display: flex; align-items: center; justify-content: space-between; font-size: 0.725rem;">
+                <span style="color: <?= $isLimitReached ? '#dc2626; font-weight: 600;' : ($isApproaching ? '#d97706; font-weight: 600;' : '#2563eb;') ?>">
+                    <?= $isLimitReached ? 'Limit Reached' : ($isApproaching ? 'Approaching Limit' : $subStatus) ?>
+                </span>
+                <span style="color: #64748b;" title="Valid Until">Till <?= e($validUntil) ?></span>
+            </div>
         </div>
 
         <!-- Assigned Guards -->

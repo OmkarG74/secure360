@@ -15,6 +15,7 @@ use App\Models\ContractShift;
 use App\Models\Customer;
 use App\Models\Guard;
 use App\Models\Site;
+use App\Services\SubscriptionService;
 use PDO;
 use PDOException;
 
@@ -143,12 +144,44 @@ class ContractController extends Controller
             return;
         }
 
+        // Subscription limit enforcement
+        $subService = new SubscriptionService();
+        $sub = $subService->getSubscriptionDetails($orgId);
+
+        if ($sub) {
+            if ($sub['calculated_status'] === 'expired' || $sub['calculated_status'] === 'suspended') {
+                $this->setFlash('error', "Subscription is {$sub['calculated_status']}. Cannot create contracts.");
+                $this->redirect('/admin/contracts');
+                return;
+            }
+
+            if ($requiredGuards > (int)$sub['guard_limit']) {
+                $this->setFlash('error', "Contract requires {$requiredGuards} guard slots, which exceeds your organisation's subscription limit of {$sub['guard_limit']} guards.");
+                $this->redirect('/admin/contracts/create');
+                return;
+            }
+        }
+
         if ($contractCode === '') {
             $contractCode = 'CTR-' . date('Y') . '-' . rand(100, 999);
         }
 
         // Parse submitted dynamic assignments
         $assignments = $this->parseSubmittedAssignments($requiredGuards, $siteId);
+
+        // Multi-tenant check: all assigned guards must belong to this organisation
+        $guardModel = new Guard();
+        foreach ($assignments as $row) {
+            $gId = (int)$row['guard_id'];
+            if ($gId > 0) {
+                $guardRecord = $guardModel->findByGuardId($gId, $orgId);
+                if (!$guardRecord) {
+                    $this->setFlash('error', 'Invalid guard assignment: Guard does not belong to your organisation.');
+                    $this->redirect('/admin/contracts/create');
+                    return;
+                }
+            }
+        }
 
         $contractModel = new Contract();
         $shiftModel = new ContractShift();
@@ -282,7 +315,32 @@ class ContractController extends Controller
         $requiredGuards = max(1, (int)$this->request->input('required_guard_count', 1));
         $extraNotes = trim((string)$this->request->input('extra_notes', '')) ?: null;
 
+        // Subscription limit check
+        $subService = new SubscriptionService();
+        $sub = $subService->getSubscriptionDetails($orgId);
+        if ($sub) {
+            if ($requiredGuards > (int)$sub['guard_limit']) {
+                $this->setFlash('error', "Contract requires {$requiredGuards} guard slots, which exceeds your organisation's subscription limit of {$sub['guard_limit']} guards.");
+                $this->redirect("/admin/contracts/{$id}/edit");
+                return;
+            }
+        }
+
         $assignments = $this->parseSubmittedAssignments($requiredGuards, $siteId);
+
+        // Multi-tenant check
+        $guardModel = new Guard();
+        foreach ($assignments as $row) {
+            $gId = (int)$row['guard_id'];
+            if ($gId > 0) {
+                $guardRecord = $guardModel->findByGuardId($gId, $orgId);
+                if (!$guardRecord) {
+                    $this->setFlash('error', 'Invalid guard assignment: Guard does not belong to your organisation.');
+                    $this->redirect("/admin/contracts/{$id}/edit");
+                    return;
+                }
+            }
+        }
 
         $shiftModel = new ContractShift();
         $assignmentModel = new Assignment();

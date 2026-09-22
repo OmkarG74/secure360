@@ -61,4 +61,22 @@ class User extends Model
         );
         $stmt->execute(['id' => $userId]);
     }
+
+    /**
+     * Retrieve all Organisation Admins belonging to an organization
+     */
+    public function findAdminsByOrganization(int $orgId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT u.*, r.role_code, r.role_name
+             FROM {$this->table} u
+             JOIN roles r ON u.role_id = r.id
+             WHERE u.organization_id = :org_id
+               AND r.role_code = 'admin'
+               AND u.deleted_at IS NULL
+             ORDER BY u.id ASC"
+        );
+        $stmt->execute(['org_id' => $orgId]);
+        return $stmt->fetchAll();
+    }
 }

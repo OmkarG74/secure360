@@ -10,6 +10,10 @@ $m = $metrics ?? [
     'newOrgs' => 0,
     'totalUsers' => 0,
     'totalGuards' => 0,
+    'expiringSoonSubs' => 0,
+    'expiredSubs' => 0,
+    'totalLicensedGuards' => 0,
+    'totalActiveGuards' => 0,
 ];
 
 $recentOrgs = $recentOrgs ?? [];
@@ -396,6 +400,58 @@ $activePct = $m['totalOrgs'] > 0 ? round(($m['activeOrgs'] / $m['totalOrgs']) * 
         </div>
     </div>
 
+    <!-- Subscription & Guard Licensing Health Strip -->
+    <div class="sa-kpi-grid" style="margin-top: -0.5rem;">
+        <!-- 1. Licensed Guard Capacity -->
+        <div class="sa-kpi-card" style="border-left: 3px solid #2563eb;">
+            <div class="sa-kpi-label">
+                <span style="color: #2563eb;">Guard Capacity Quota</span>
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div class="sa-kpi-val" style="font-size: 1.5rem;">
+                <?= (int)$m['totalActiveGuards'] ?> <span style="font-size: 0.95rem; font-weight: 500; color: #64748b;">/ <?= (int)$m['totalLicensedGuards'] ?></span>
+            </div>
+            <div class="sa-kpi-footer">Active vs total licensed guard slots</div>
+        </div>
+
+        <!-- 2. Expiring Subscriptions -->
+        <div class="sa-kpi-card" style="border-left: 3px solid #f59e0b;">
+            <div class="sa-kpi-label">
+                <span style="color: #b45309;">Expiring Soon</span>
+                <svg width="14" height="14" fill="none" stroke="#f59e0b" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <div class="sa-kpi-val" style="color: <?= $m['expiringSoonSubs'] > 0 ? '#b45309' : '#0f172a' ?>;">
+                <?= (int)$m['expiringSoonSubs'] ?>
+            </div>
+            <div class="sa-kpi-footer">Require renewal attention</div>
+        </div>
+
+        <!-- 3. Expired Subscriptions -->
+        <div class="sa-kpi-card" style="border-left: 3px solid #ef4444;">
+            <div class="sa-kpi-label">
+                <span style="color: #dc2626;">Expired Subscriptions</span>
+                <svg width="14" height="14" fill="none" stroke="#ef4444" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            </div>
+            <div class="sa-kpi-val" style="color: <?= $m['expiredSubs'] > 0 ? '#dc2626' : '#64748b' ?>;">
+                <?= (int)$m['expiredSubs'] ?>
+            </div>
+            <div class="sa-kpi-footer">Overdue subscription periods</div>
+        </div>
+
+        <!-- 4. Manage Subscriptions Link -->
+        <div class="sa-kpi-card" style="display: flex; flex-direction: column; justify-content: center; background: #f8fafc; border-style: dashed;">
+            <div style="font-size: 0.8125rem; font-weight: 600; color: #1e293b; margin-bottom: 0.35rem;">
+                Subscription Management
+            </div>
+            <div style="font-size: 0.725rem; color: #64748b; margin-bottom: 0.5rem;">
+                Manage tenant licensing and view invoices
+            </div>
+            <a href="<?= url('/superadmin/subscriptions') ?>" style="font-size: 0.75rem; font-weight: 600; color: #2563eb; text-decoration: none; display: inline-flex; align-items: center; gap: 0.25rem;">
+                View All Subscriptions &rarr;
+            </a>
+        </div>
+    </div>
+
     <!-- Main Content Grid -->
     <div class="sa-content-grid">
         
@@ -510,7 +566,7 @@ $activePct = $m['totalOrgs'] > 0 ? round(($m['activeOrgs'] / $m['totalOrgs']) * 
                                             <?= format_date($org['created_at'] ?? null) ?>
                                         </td>
                                         <td style="text-align: right;">
-                                            <a href="<?= url('/superadmin/organisations') ?>" class="btn" style="padding: 0.25rem 0.6rem; font-size: 0.725rem; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; text-decoration: none; border-radius: 4px; font-weight: 600;">
+                                            <a href="<?= url('/superadmin/organisations/' . $org['id']) ?>" class="btn" style="padding: 0.25rem 0.6rem; font-size: 0.725rem; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; text-decoration: none; border-radius: 4px; font-weight: 600;">
                                                 Manage
                                             </a>
                                         </td>

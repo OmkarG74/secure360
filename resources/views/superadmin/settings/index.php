@@ -38,6 +38,10 @@ $activeTab = $activeTab ?? 'account';
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
                 <span>System</span>
             </button>
+            <button type="button" class="settings-nav-item <?= $activeTab === 'billing' ? 'active' : '' ?>" data-tab="billing" onclick="switchSettingsTab('billing')">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span>Subscription &amp; Billing</span>
+            </button>
         </nav>
 
         <!-- Right Column: Settings Content Panes -->
@@ -303,6 +307,64 @@ $activeTab = $activeTab ?? 'account';
                 </form>
             </div>
 
+            <!-- 5. SUBSCRIPTION & BILLING -->
+            <div id="tab-billing" class="settings-tab-pane <?= $activeTab === 'billing' ? 'active' : '' ?>">
+                <h2 class="settings-section-title">Subscription &amp; Guard Licensing Policies</h2>
+                <p class="settings-section-desc">Configure platform-wide base pricing per guard, billing currency, and renewal notification windows.</p>
+
+                <form method="POST" action="<?= url('/superadmin/settings') ?>">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="section" value="billing">
+
+                    <div class="settings-form-container">
+                        <div class="alert alert-info" style="display: flex; align-items: flex-start; gap: 0.75rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 8px; padding: 0.875rem 1rem; margin-bottom: 1.25rem;">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink: 0; margin-top: 2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            <div style="font-size: 0.85rem; line-height: 1.45;">
+                                <strong>Default Pricing Notice:</strong> Changes made here set the baseline rate for new organisations and new subscription cycles. Existing active subscriptions retain their locked contractual rates until manually adjusted or renewed.
+                            </div>
+                        </div>
+
+                        <div class="settings-grid-2">
+                            <div class="form-group">
+                                <label class="form-label">Default Price Per Guard (Per Cycle) <span class="required-star">*</span></label>
+                                <div class="input-icon-wrapper">
+                                    <span style="position: absolute; left: 0.875rem; top: 50%; transform: translateY(-50%); font-weight: 700; color: #64748b; font-size: 0.9rem;">₹</span>
+                                    <input type="number" step="0.01" min="0" name="price_per_guard" class="form-control" style="padding-left: 2rem;" value="<?= e((string)($pricePerGuard ?? 500.00)) ?>" required placeholder="500.00">
+                                </div>
+                                <span style="font-size: 0.725rem; color: #64748b; margin-top: 0.25rem; display: block;">Standard rate charged per guard slot per subscription period.</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Platform Billing Currency</label>
+                                <select name="currency" class="form-select">
+                                    <option value="INR" <?= ($currency ?? 'INR') === 'INR' ? 'selected' : '' ?>>INR (₹ - Indian Rupee)</option>
+                                    <option value="USD" <?= ($currency ?? '') === 'USD' ? 'selected' : '' ?>>USD ($ - US Dollar)</option>
+                                    <option value="AED" <?= ($currency ?? '') === 'AED' ? 'selected' : '' ?>>AED (د.إ - UAE Dirham)</option>
+                                    <option value="EUR" <?= ($currency ?? '') === 'EUR' ? 'selected' : '' ?>>EUR (€ - Euro)</option>
+                                    <option value="GBP" <?= ($currency ?? '') === 'GBP' ? 'selected' : '' ?>>GBP (£ - British Pound)</option>
+                                </select>
+                                <span style="font-size: 0.725rem; color: #64748b; margin-top: 0.25rem; display: block;">Official currency code rendered on generated invoices.</span>
+                            </div>
+                        </div>
+
+                        <div class="settings-grid-2">
+                            <div class="form-group">
+                                <label class="form-label">"Expiring Soon" Warning Window (Days)</label>
+                                <input type="number" min="1" max="90" name="expiring_soon_days" class="form-control" value="<?= e((string)($expiringDays ?? 15)) ?>" required>
+                                <span style="font-size: 0.725rem; color: #64748b; margin-top: 0.25rem; display: block;">Days prior to expiry when amber banners and renewal alerts appear in Admin portals.</span>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button Row -->
+                        <div style="margin-top: 0.5rem; padding-top: 1.25rem; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end;">
+                            <button type="submit" class="btn btn-primary" style="padding: 0.65rem 1.75rem; font-weight: 600;">
+                                Save Subscription Defaults
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
         </main>
     </div>
 </div>
@@ -336,7 +398,7 @@ function switchSettingsTab(tabName) {
 document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    if (tabParam && ['account', 'security', 'platform', 'system'].includes(tabParam)) {
+    if (tabParam && ['account', 'security', 'platform', 'system', 'billing'].includes(tabParam)) {
         switchSettingsTab(tabParam);
     }
 });

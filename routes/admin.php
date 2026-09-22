@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Controllers\Admin\AdminDashboardController;
 use App\Controllers\Admin\AttendanceController;
+use App\Controllers\Admin\BillingController;
 use App\Controllers\Admin\ClientSiteController;
 use App\Controllers\Admin\ContractController;
 use App\Controllers\Admin\GuardController;
@@ -75,4 +76,8 @@ $router->group([
     $router->get('/notifications', [NotificationController::class, 'index']);
     $router->post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
     $router->post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
+
+    // 9. Subscription & Billing Statements
+    $router->get('/billing', [BillingController::class, 'index']);
+    $router->get('/invoices/{id}/download', [BillingController::class, 'downloadInvoice']);
 });

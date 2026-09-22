@@ -11,6 +11,7 @@ use App\Core\Request;
 use App\Core\Response;
 use App\Models\Guard;
 use App\Models\User;
+use App\Services\SubscriptionService;
 
 /**
  * Guard Management Controller
@@ -108,6 +109,9 @@ class GuardController extends Controller
         $offset = ($page - 1) * $pageSize;
         $pagedGuards = array_slice($filteredValues, $offset, $pageSize);
 
+        $subService = new SubscriptionService();
+        $subDetails = $subService->getSubscriptionDetails($orgId);
+
         $this->render('admin/guards/index', [
             'pageTitle' => 'Security Guards Roster - Secure360',
             'organisationId' => $orgId,
@@ -123,6 +127,7 @@ class GuardController extends Controller
             'pageSize' => $pageSize,
             'totalRecords' => $totalFiltered,
             'totalPages' => $totalPages,
+            'subDetails' => $subDetails,
         ], 'layouts/admin');
     }
 
@@ -132,6 +137,15 @@ class GuardController extends Controller
     public function setupForm(): void
     {
         $orgId = Auth::organisationId() ?? 1;
+
+        $subService = new SubscriptionService();
+        $subCheck = $subService->canAddOrActivateGuard($orgId, 1);
+        if (!$subCheck['allowed']) {
+            $this->setFlash('error', $subCheck['message']);
+            $this->redirect('/admin/guards');
+            return;
+        }
+
         $guardModel = new Guard();
         $nextCode = $guardModel->getNextEmployeeCode($orgId);
 
@@ -150,6 +164,14 @@ class GuardController extends Controller
     public function storeGuard(): void
     {
         $orgId = Auth::organisationId() ?? 1;
+
+        $subService = new SubscriptionService();
+        $subCheck = $subService->canAddOrActivateGuard($orgId, 1);
+        if (!$subCheck['allowed']) {
+            $this->setFlash('error', $subCheck['message']);
+            $this->redirect('/admin/guards');
+            return;
+        }
 
         $fullName = trim((string)$this->request->input('full_name', ''));
         $email = trim((string)$this->request->input('email', ''));
@@ -320,6 +342,18 @@ class GuardController extends Controller
             $this->setFlash('error', 'Password must be at least 6 characters.');
             $this->redirect("/admin/guards/{$guardId}/edit");
             return;
+        }
+
+        // Check if activating an inactive guard would exceed subscription limit
+        $wasInactive = ((int)$guard['guard_status'] !== 0 || (int)$guard['user_status'] !== 0);
+        if ($status === 0 && $wasInactive) {
+            $subService = new SubscriptionService();
+            $canActivate = $subService->canAddOrActivateGuard($orgId, 1);
+            if (!$canActivate['allowed']) {
+                $this->setFlash('error', 'Cannot activate guard: ' . $canActivate['message']);
+                $this->redirect("/admin/guards/{$guardId}/edit");
+                return;
+            }
         }
 
         try {

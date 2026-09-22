@@ -15,15 +15,34 @@ $assignedCount = $assignedCount ?? 0;
 $onDutyCount = $onDutyCount ?? 0;
 ?>
 
+<?php
+$sub = $subDetails ?? null;
+$guardLimit = (int)($sub['guard_limit'] ?? 30);
+$activeGuardsCount = (int)($sub['active_guards'] ?? $activeCount);
+$isLimitReached = $sub['is_limit_reached'] ?? ($activeGuardsCount >= $guardLimit);
+?>
+
 <div class="page-container">
     <!-- Page Header -->
-    <div class="page-header">
-        <div>
-            <h1 class="page-header-title">Guards</h1>
+    <div class="page-header" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <h1 class="page-header-title" style="margin: 0;">Guards</h1>
+            <span class="badge-guard-usage" style="font-size: 0.8125rem; font-weight: 700; color: <?= $isLimitReached ? '#dc2626' : '#2563eb' ?>; background: <?= $isLimitReached ? '#fef2f2' : '#eff6ff' ?>; border: 1px solid <?= $isLimitReached ? '#fecaca' : '#bfdbfe' ?>; padding: 0.25rem 0.65rem; border-radius: 9999px;">
+                <?= $activeGuardsCount ?> / <?= $guardLimit ?>
+            </span>
         </div>
     </div>
 
     <?php App\Core\View::component('components/alerts'); ?>
+
+    <?php if ($isLimitReached): ?>
+        <div style="padding: 0.875rem 1.25rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem;">
+            <svg width="18" height="18" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span style="font-size: 0.8125rem; color: #991b1b; font-weight: 600;">
+                Guard limit reached. Your organisation's subscription allows up to <?= $guardLimit ?> active guards. Contact Superadmin to upgrade your capacity.
+            </span>
+        </div>
+    <?php endif; ?>
 
     <!-- Filter & Search Toolbar with Actions Distributed Across Available Width -->
     <div class="toolbar-card">
@@ -66,10 +85,17 @@ $onDutyCount = $onDutyCount ?? 0;
                 <?php endif; ?>
             </form>
 
-            <a href="<?= url('/admin/guards/setup') ?>" class="btn btn-primary" style="height: 44px; padding: 0 1.25rem; border-radius: 10px; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; font-weight: 600;">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
-                Setup Guard
-            </a>
+            <?php if ($isLimitReached): ?>
+                <button type="button" class="btn" style="height: 44px; padding: 0 1.25rem; border-radius: 10px; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 600; background: #e2e8f0; color: #94a3b8; cursor: not-allowed; border: none;" title="Guard limit reached (<?= $activeGuardsCount ?> / <?= $guardLimit ?> guards). Upgrade subscription to add more." disabled>
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                    <span>Setup Guard</span>
+                </button>
+            <?php else: ?>
+                <a href="<?= url('/admin/guards/setup') ?>" class="btn btn-primary" style="height: 44px; padding: 0 1.25rem; border-radius: 10px; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; font-weight: 600;">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                    <span>Setup Guard</span>
+                </a>
+            <?php endif; ?>
         </div>
     </div>
 
