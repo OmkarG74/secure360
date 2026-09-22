@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/services/api_service.dart';
+import 'core/services/location_service.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/splash/screens/splash_screen.dart';
 
@@ -17,6 +18,11 @@ void main() async {
       (route) => false,
     );
   };
+
+  // Stop live location telemetry at the very start of every logout,
+  // before the server token is revoked or local state is cleared.
+  // Uses a hook to avoid a circular import (location_service imports api_service).
+  ApiService.onBeforeLogout = LocationService.stopLiveTracking;
 
   runApp(const Secure360App());
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 
@@ -58,23 +59,152 @@ class ApiService {
   static const String _tokenKey = 'secure360_guard_token';
   static const String _userKey = 'secure360_guard_user';
 
+  /// Standard secure storage instance (without encryptedSharedPreferences: true)
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+
+  /// Synchronization lock for concurrent legacy token migration
+  static Future<String?>? _inFlightMigration;
+
   /// Global navigator key for handling session expiration (401)
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   /// Global session expiration hook
   static void Function()? onSessionExpired;
 
-  /// Save auth credentials in device storage
+  /// Intentional-logout state guard.
+  /// true  → the session was intentionally logged out; stale/in-flight 401
+  ///          responses from background requests must NOT trigger [onSessionExpired].
+  /// false → a new authenticated session has been successfully saved in
+  ///          [saveAuthSession]; normal protected-request 401 handling is active.
+  /// Set to true at the start of [logout()]. Reset to false only in [saveAuthSession()]
+  /// after the new token and user record have been fully persisted.
+  static bool _isLoggingOut = false;
+
+  /// Hook called at the start of [logout()] before any network or storage
+  /// operations. Used to stop background services (e.g. location telemetry)
+  /// without creating a circular import between api_service and location_service.
+  /// Set this in main.dart: ApiService.onBeforeLogout = LocationService.stopLiveTracking;
+  static void Function()? onBeforeLogout;
+
+  /// Save auth credentials in device storage.
+  ///
+  /// - The authentication Bearer token is persisted to [FlutterSecureStorage].
+  /// - The non-credential user profile is saved to [SharedPreferences].
+  /// - Any legacy plaintext token in [SharedPreferences] is removed.
+  /// - Resets [_isLoggingOut] to false only after successful persistence.
+  /// If secure token storage fails, local auth state is safely cleared to prevent
+  /// a half-authenticated or inconsistent local state.
   static Future<void> saveAuthSession(String token, Map<String, dynamic> user) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
-    await prefs.setString(_userKey, jsonEncode(user));
+    try {
+      // 1. Write authentication token into secure storage
+      await _secureStorage.write(key: _tokenKey, value: token);
+
+      // 2. Write user profile to SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_userKey, jsonEncode(user));
+
+      // 3. Ensure any legacy plaintext token is purged from SharedPreferences
+      await prefs.remove(_tokenKey);
+
+      // 4. New session is fully persisted. Normal 401 handling resumes from this point.
+      _isLoggingOut = false;
+    } catch (e) {
+      // If secure storage fails, do not leave the client in an inconsistent state.
+      debugPrint('[Secure360 Auth] Failed to save session securely: $e');
+      await clearAuthSession();
+      rethrow;
+    }
   }
 
-  /// Retrieve active Bearer token
+  /// Retrieve active Bearer token.
+  ///
+  /// Lazy migration order:
+  /// CASE A — Secure token exists:
+  ///   - Returns the token from Android Keystore-backed secure storage.
+  ///   - Does NOT check or use legacy SharedPreferences.
+  /// CASE B — Secure token is genuinely absent/null:
+  ///   - Legitimate legacy upgrade scenario.
+  ///   - Performs synchronized lazy migration via [_migrateLegacyTokenIfPresent].
+  /// CASE C — Secure storage throws an exception:
+  ///   - Does NOT fall back to legacy SharedPreferences.
+  ///   - Fails closed: logs error (without sensitive token contents) and returns null.
+  ///   - Forces standard re-authentication cleanly.
   static Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey);
+    final String? secureToken;
+    try {
+      secureToken = await _secureStorage.read(key: _tokenKey);
+    } catch (e) {
+      // CASE C — Fail closed: Keystore or secure storage error.
+      // Do NOT fall back to legacy plaintext storage.
+      debugPrint('[Secure360 Auth] Secure storage read exception (failing closed): $e');
+      return null;
+    }
+
+    // CASE A — Secure token exists and is valid
+    if (secureToken != null && secureToken.isNotEmpty) {
+      return secureToken;
+    }
+
+    // CASE B — Secure token is genuinely absent/null
+    return await _migrateLegacyTokenIfPresent();
+  }
+
+  /// Synchronized lazy migration of legacy SharedPreferences token
+  static Future<String?> _migrateLegacyTokenIfPresent() async {
+    if (_inFlightMigration != null) {
+      return await _inFlightMigration;
+    }
+
+    _inFlightMigration = _doMigrateLegacyToken();
+    try {
+      return await _inFlightMigration;
+    } finally {
+      _inFlightMigration = null;
+    }
+  }
+
+  static Future<String?> _doMigrateLegacyToken() async {
+    try {
+      // Double check secure storage first
+      try {
+        final existing = await _secureStorage.read(key: _tokenKey);
+        if (existing != null && existing.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_tokenKey);
+          return existing;
+        }
+      } catch (e) {
+        debugPrint('[Secure360 Auth] Secure storage read exception during migration check: $e');
+        return null;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final legacyToken = prefs.getString(_tokenKey);
+
+      if (legacyToken == null || legacyToken.isEmpty) {
+        return null;
+      }
+
+      // 1. Write legacy token to FlutterSecureStorage
+      await _secureStorage.write(key: _tokenKey, value: legacyToken);
+
+      // 2. Verify secure-storage write completed successfully
+      final verified = await _secureStorage.read(key: _tokenKey);
+      if (verified != legacyToken) {
+        debugPrint('[Secure360 Auth] Secure storage migration verification failed.');
+        return null;
+      }
+
+      // 3. Remove legacy plaintext key from SharedPreferences
+      await prefs.remove(_tokenKey);
+      debugPrint('[Secure360 Auth] Legacy authentication token migrated successfully.');
+
+      // 4. Return the migrated token
+      return legacyToken;
+    } catch (e) {
+      debugPrint('[Secure360 Auth] Legacy token migration failed: $e');
+      return null;
+    }
   }
 
   /// Retrieve saved user data
@@ -91,11 +221,26 @@ class ApiService {
     return null;
   }
 
-  /// Clear session on logout or session expiration
+  /// Clear session on logout or session expiration.
+  ///
+  /// Completely removes:
+  /// A. Secure-storage authentication token
+  /// B. Legacy SharedPreferences authentication token
+  /// C. SharedPreferences user profile
   static Future<void> clearAuthSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
-    await prefs.remove(_userKey);
+    try {
+      await _secureStorage.delete(key: _tokenKey);
+    } catch (e) {
+      debugPrint('[Secure360 Auth] Error clearing secure storage: $e');
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_tokenKey);
+      await prefs.remove(_userKey);
+    } catch (e) {
+      debugPrint('[Secure360 Auth] Error clearing SharedPreferences: $e');
+    }
   }
 
   /// Build standard headers with Bearer token injection
@@ -112,14 +257,28 @@ class ApiService {
   }
 
   /// Safely parse HTTP response into an ApiResponse<T>
+  ///
+  /// [suppressSessionExpiry]: When true, a 401 response will NOT clear the local
+  /// session or call [onSessionExpired]. Use this for public/unauthenticated
+  /// endpoints (e.g. login) where a 401 means "wrong credentials", not
+  /// "the authenticated session has expired".
   static ApiResponse<T> _parseResponse<T>(
     http.Response response,
-    T Function(dynamic)? fromJsonT,
-  ) {
-    // Global 401 Session Expiration Handler
+    T Function(dynamic)? fromJsonT, {
+    bool suppressSessionExpiry = false,
+  }) {
+    // Global 401 Session Expiration Handler.
+    //
+    // Suppressed in two cases:
+    //   1. suppressSessionExpiry == true  → public/login endpoint (wrong credentials,
+    //      not an expired authenticated session; do not clear state or navigate away).
+    //   2. _isLoggingOut == true          → intentional logout in progress (concurrent
+    //      in-flight requests racing the session clear must not show "session expired").
     if (response.statusCode == 401) {
-      clearAuthSession();
-      onSessionExpired?.call();
+      if (!suppressSessionExpiry && !_isLoggingOut) {
+        clearAuthSession();
+        onSessionExpired?.call();
+      }
     }
 
     if (response.body.isEmpty) {
@@ -194,9 +353,16 @@ class ApiService {
           )
           .timeout(ApiConfig.connectTimeout);
 
+      // Login is a PUBLIC authentication endpoint — not a protected session request.
+      // suppressSessionExpiry: true ensures that a 401 (wrong credentials) does NOT:
+      //   - clear an existing authenticated session
+      //   - fire onSessionExpired (which would show "Your session has expired")
+      // The 401 error message from the server flows back through ApiResponse.message
+      // and is displayed in login_screen.dart's _errorMessage banner.
       final apiResponse = _parseResponse<Map<String, dynamic>>(
         response,
         (data) => data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{},
+        suppressSessionExpiry: true,
       );
 
       if (apiResponse.success && apiResponse.data != null) {
@@ -225,15 +391,42 @@ class ApiService {
   }
 
   /// Guard Logout
+  ///
+  /// Logout lifecycle (A → F):
+  /// A. Mark intentional-logout state — suppresses global 401/session-expired handler
+  ///    for ALL subsequent requests until the next successful login.
+  /// B. Stop live location tracking via [onBeforeLogout] hook (set in main.dart).
+  /// C. Revoke the server token via POST /api/v1/guard/logout.
+  /// D. Clear local token and user data from SharedPreferences.
+  /// E. Return result to caller so it can navigate to LoginScreen.
+  /// F. [_isLoggingOut] remains true after this method returns. It is only reset
+  ///    to false inside [saveAuthSession()] when the guard successfully logs in again.
+  ///    This prevents stale in-flight requests (getProfile, getAssignments, etc.)
+  ///    that were started before logout from triggering onSessionExpired after the
+  ///    finally block would have prematurely re-enabled the handler.
   static Future<ApiResponse<void>> logout() async {
+    // A. Mark intentional logout — suppresses onSessionExpired for any concurrent 401.
+    //    Remains true until saveAuthSession() confirms a new session is established.
+    _isLoggingOut = true;
+
+    // B. Stop live location telemetry immediately to prevent orphaned timer pings
+    //    from firing tokenless requests after the session is cleared.
+    onBeforeLogout?.call();
+
     try {
+      // C. Revoke the server-side token.
       final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.logoutEndpoint}');
       final headers = await _buildHeaders();
       final response = await http.post(url, headers: headers).timeout(ApiConfig.connectTimeout);
+
+      // D. Clear local auth state (token + user JSON).
       await clearAuthSession();
 
+      // E. Return to caller; navigation is the caller's responsibility.
+      //    _parseResponse will NOT call onSessionExpired because _isLoggingOut is true.
       return _parseResponse<void>(response, null);
     } catch (e) {
+      // Network failure: still clear local state so the guard is signed out locally.
       await clearAuthSession();
       return ApiResponse<void>(
         success: true,
@@ -241,6 +434,8 @@ class ApiService {
         statusCode: 200,
       );
     }
+    // No finally block. _isLoggingOut intentionally stays true after logout()
+    // returns. It is reset only in saveAuthSession() on the next successful login.
   }
 
   /// Guard Profile
