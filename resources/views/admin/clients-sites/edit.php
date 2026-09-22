@@ -6,20 +6,24 @@ $client = $client ?? [];
 $sites = $client['sites'] ?? [];
 ?>
 
-<div class="breadcrumb" style="font-size: 0.8125rem; color: #64748b; margin-bottom: 1rem;">
-    <a href="<?= url('/admin/clients-sites') ?>" style="color: #2563eb; text-decoration: none;">Clients &amp; Sites</a>
-    <span style="margin: 0 0.5rem;">/</span>
-    <span style="color: #0f172a; font-weight: 500;">Edit <?= e($client['name'] ?? 'Client') ?></span>
-</div>
+<div class="page-container">
+    <!-- Form Back Navigation -->
+    <a href="<?= url('/admin/clients-sites') ?>" class="form-back-nav">
+        <svg fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/></svg>
+        <span>Back to Clients &amp; Sites</span>
+    </a>
 
-<div class="page-header" style="margin-bottom: 2rem;">
-    <h1 style="font-size: 1.625rem; font-weight: 700; color: #0f172a; margin-bottom: 0.25rem;">Edit Client Account</h1>
-    <p style="font-size: 0.875rem; color: #64748b;">Manage company profile, contact details, and registered security sites.</p>
-</div>
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-header-title">Edit Client</h1>
+            <p class="page-header-desc">Manage company profile, contact details, and registered security sites.</p>
+        </div>
+    </div>
 
-<?php App\Core\View::component('components/alerts'); ?>
+    <?php App\Core\View::component('components/alerts'); ?>
 
-<div style="display: grid; grid-template-columns: 1fr 1.3fr; gap: 1.75rem; align-items: start;">
+    <div style="display: grid; grid-template-columns: 1fr 1.3fr; gap: 1.75rem; align-items: start;">
     
     <!-- Edit Client Info -->
     <div class="card" style="padding: 1.75rem;">
@@ -138,7 +142,7 @@ $sites = $client['sites'] ?? [];
         <!-- Add Another Site Form -->
         <div class="card" style="padding: 1.75rem;">
             <h3 style="font-size: 1.0625rem; font-weight: 600; color: #0f172a; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
-                + Add Another Site
+                Add Another Site
             </h3>
 
             <form method="POST" action="<?= url('/admin/clients/' . $client['id'] . '/sites') ?>">
@@ -146,7 +150,7 @@ $sites = $client['sites'] ?? [];
                 <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 1rem; margin-bottom: 0.75rem;">
                     <div>
                         <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;">Site Name *</label>
-                        <input type="text" name="site_name" class="form-control" placeholder="e.g. West Perimeter" required>
+                        <input type="text" name="site_name" class="form-control" placeholder="West Perimeter" required>
                     </div>
                     <div>
                         <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;">Site Code</label>
@@ -175,10 +179,11 @@ $sites = $client['sites'] ?? [];
                 </div>
 
                 <button type="submit" class="btn btn-outline" style="color: #2563eb; border-color: #2563eb; font-weight: 600;">
-                    + Add Site Post
+                     Add Site Post
                 </button>
             </form>
         </div>
 
     </div>
+</div>
 </div>

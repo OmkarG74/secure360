@@ -8,6 +8,9 @@ Options -MultiViews -Indexes +FollowSymLinks
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # Graceful fallback: If /Secure360/assets/... is requested at root domain, strip /Secure360
+    RewriteRule ^Secure360/assets/(.*)$ assets/$1 [L,QSA]
+
     # Pass the Authorization header to PHP (essential for Guard mobile API Bearer tokens)
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

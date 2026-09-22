@@ -14,6 +14,7 @@ require_once __DIR__ . '/../app/Config/constants.php';
 require_once __DIR__ . '/../app/Helpers/helpers.php';
 
 use App\Controllers\Api\Guard\GuardAttendanceController;
+use App\Controllers\Api\Guard\GuardLocationController;
 use App\Core\Database;
 use App\Core\Request;
 use App\Core\Response;
@@ -256,6 +257,41 @@ $controller->checkOut();
 assertCondition(
     $resResp->lastCode === 422 && str_contains($resResp->lastData['message'], 'must not reuse the check-in selfie'),
     "Scenario J2: Checkout reusing check-in selfie rejected with message: '{$resResp->lastData['message']}'"
+);
+
+// Scenario J3: Guard submits fresh checkout selfie with attendance_id linked via GuardLocationController
+$locResp = new TestResponse();
+$locController = new GuardLocationController(makeRequest([
+    'attendance_id' => $createdAttendanceId,
+    'image_path' => 'uploads/selfies/test_fresh_checkout_flow.jpg',
+]), $locResp);
+$locController->submitSelfie();
+$freshUploadedSelfieId = (int)($locResp->lastData['data']['selfie_id'] ?? 0);
+
+assertCondition(
+    $locResp->lastCode === 201 && $freshUploadedSelfieId > 0,
+    "Scenario J3: Checkout selfie successfully uploaded via /api/v1/guard/selfie (Selfie ID: {$freshUploadedSelfieId})"
+);
+
+// Verify attendance.selfie_id was NOT overwritten and still holds check-in selfie
+$attSelfieId = (int)$db->query("SELECT selfie_id FROM attendance WHERE id = {$createdAttendanceId}")->fetchColumn();
+assertCondition(
+    $attSelfieId === $testCheckinSelfieId,
+    "Attendance record preserves original check-in selfie_id ({$testCheckinSelfieId}) and was not overwritten by checkout selfie upload"
+);
+
+// Verify check-in selfie reuse rejection still triggers if client sends old check-in selfie ID
+$resResp = new TestResponse();
+$controller = new GuardAttendanceController(makeRequest([
+    'attendance_id' => $createdAttendanceId,
+    'latitude' => $siteLat,
+    'longitude' => $siteLng,
+    'selfie_id' => $testCheckinSelfieId,
+]), $resResp);
+$controller->checkOut();
+assertCondition(
+    $resResp->lastCode === 422 && str_contains($resResp->lastData['message'], 'must not reuse the check-in selfie'),
+    "Checkout with check-in selfie ID correctly rejected with 422 even after fresh selfie was uploaded"
 );
 
 // Scenario G: Checkout OUTSIDE geofence (5km away) -> Rejected with 422

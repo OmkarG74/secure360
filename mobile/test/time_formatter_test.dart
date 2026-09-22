@@ -2,56 +2,94 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:secure360_mobile/core/utils/time_formatter.dart';
 
 void main() {
-  group('TimeFormatter Tests', () {
-    test('Converts 08:00:00 to 8:00 AM', () {
-      expect(TimeFormatter.formatTime('08:00:00'), equals('8:00 AM'));
+  group('TimeFormatter Global Standard Tests', () {
+    test('Date only: dd-MMM-yy', () {
+      expect(TimeFormatter.formatDate('2026-09-18'), equals('18-Sep-26'));
+      expect(TimeFormatter.formatDate('2026-01-01'), equals('01-Jan-26'));
+      expect(TimeFormatter.formatDate('2026-12-31'), equals('31-Dec-26'));
+      expect(TimeFormatter.formatDate(DateTime(2026, 9, 18)), equals('18-Sep-26'));
+      expect(TimeFormatter.formatDate(null), equals('—'));
     });
 
-    test('Converts 16:00:00 to 4:00 PM', () {
-      expect(TimeFormatter.formatTime('16:00:00'), equals('4:00 PM'));
+    test('Date and time: dd-MMM-yy hh:mm AM/PM', () {
+      expect(
+        TimeFormatter.formatDateTime('2026-09-18 17:45:00'),
+        equals('18-Sep-26 05:45 PM'),
+      );
+      expect(
+        TimeFormatter.formatDateTime('2026-09-18 08:00:00'),
+        equals('18-Sep-26 08:00 AM'),
+      );
+      expect(
+        TimeFormatter.formatDateTime('2026-01-01 00:00:00'),
+        equals('01-Jan-26 12:00 AM'),
+      );
+      expect(
+        TimeFormatter.formatDateTime('2026-12-31 12:00:00'),
+        equals('31-Dec-26 12:00 PM'),
+      );
+      expect(TimeFormatter.formatDateTime(null), equals('—'));
     });
 
-    test('Converts 17:32:03 to 5:32:03 PM (with non-zero seconds)', () {
-      expect(TimeFormatter.formatTime('17:32:03'), equals('5:32:03 PM'));
-    });
-
-    test('Handles midnight (00:00:00 -> 12:00 AM)', () {
+    test('Time only: hh:mm AM/PM', () {
+      expect(TimeFormatter.formatTime('08:00:00'), equals('08:00 AM'));
+      expect(TimeFormatter.formatTime('16:00:00'), equals('04:00 PM'));
       expect(TimeFormatter.formatTime('00:00:00'), equals('12:00 AM'));
-    });
-
-    test('Handles noon (12:00:00 -> 12:00 PM)', () {
       expect(TimeFormatter.formatTime('12:00:00'), equals('12:00 PM'));
+      expect(TimeFormatter.formatTime('17:45'), equals('05:45 PM'));
+      expect(TimeFormatter.formatTime('08:00 AM'), equals('08:00 AM'));
+      expect(TimeFormatter.formatTime('04:00 PM'), equals('04:00 PM'));
+      expect(TimeFormatter.formatTime(null), equals('—'));
     });
 
-    test('Handles midnight with seconds (00:15:30 -> 12:15:30 AM)', () {
-      expect(TimeFormatter.formatTime('00:15:30'), equals('12:15:30 AM'));
-    });
-
-    test('Avoids double conversion if already formatted', () {
-      expect(TimeFormatter.formatTime('8:00 AM'), equals('8:00 AM'));
-      expect(TimeFormatter.formatTime('4:00 PM'), equals('4:00 PM'));
-    });
-
-    test('Converts datetime string preserving date', () {
+    test('Date range: dd-MMM-yy → dd-MMM-yy', () {
       expect(
-        TimeFormatter.formatDateTime('2026-09-11 17:32:03'),
-        equals('2026-09-11 5:32:03 PM'),
+        TimeFormatter.formatDateRange('2026-01-01', '2026-12-31'),
+        equals('01-Jan-26 → 31-Dec-26'),
       );
       expect(
-        TimeFormatter.formatDateTime('2026-09-11 08:00:00'),
-        equals('2026-09-11 8:00:00 AM'),
-      );
-      expect(
-        TimeFormatter.formatDateTime('2026-09-11 08:00:00', preserveSeconds: false),
-        equals('2026-09-11 8:00 AM'),
+        TimeFormatter.formatDateRange('2026-01-01', null),
+        equals('01-Jan-26 → Ongoing'),
       );
     });
 
-    test('Formats time range (shift timing)', () {
+    test('Shift time range: hh:mm AM/PM - hh:mm AM/PM', () {
       expect(
         TimeFormatter.formatTimeRange('08:00:00', '16:00:00'),
-        equals('8:00 AM - 4:00 PM'),
+        equals('08:00 AM - 04:00 PM'),
       );
+      expect(
+        TimeFormatter.formatTimeRange('22:00:00', '06:00:00'),
+        equals('10:00 PM - 06:00 AM'),
+      );
+    });
+
+    test('Requirement 7: 2026-09-18 13:00:00 interpreted and displayed as Indian time', () {
+      // 1. Backend timestamp without timezone representing IST
+      expect(
+        TimeFormatter.formatDateTime('2026-09-18 13:00:00'),
+        equals('18-Sep-26 01:00 PM'),
+      );
+      expect(
+        TimeFormatter.formatTime('13:00:00'),
+        equals('01:00 PM'),
+      );
+
+      // 2. UTC ISO string converted accurately to IST (+05:30)
+      expect(
+        TimeFormatter.formatDateTime('2026-09-18T07:30:00Z'),
+        equals('18-Sep-26 01:00 PM'),
+      );
+
+      // 3. Explicit IST offset preserved
+      expect(
+        TimeFormatter.formatDateTime('2026-09-18T13:00:00+05:30'),
+        equals('18-Sep-26 01:00 PM'),
+      );
+
+      // 4. Prevent double conversion
+      expect(TimeFormatter.formatTime('01:00 PM'), equals('01:00 PM'));
+      expect(TimeFormatter.formatTime('1:00 pm'), equals('1:00 PM'));
     });
   });
 }

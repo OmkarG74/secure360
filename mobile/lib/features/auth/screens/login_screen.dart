@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/config/api_config.dart';
 import '../../../core/services/api_service.dart';
 import '../../duty/screens/home_dashboard_screen.dart';
 
@@ -65,36 +66,15 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // App Logo / Shield Icon
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFDBEAFE)),
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.shield_outlined,
-                      size: 38,
-                      color: Color(0xFF2563EB),
-                    ),
+                // App Logo (replaces icon and plain Secure360 text)
+                Center(
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    height: 56,
+                    fit: BoxFit.contain,
                   ),
                 ),
-                const SizedBox(height: 24),
-
-                const Text(
-                  'Secure360 Guard',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 10),
                 const Text(
                   'Field Duty & Operations Mobile Client',
                   textAlign: TextAlign.center,
@@ -242,7 +222,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 24),
                 const Text(
-                  'Connected via Secure360 Core PHP REST API\nEmulator: 10.0.2.2 / Wi-Fi: Local IP',
+                  'Connected to Secure360 Cloud Backend\n${ApiConfig.baseUrl}',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), height: 1.4),
                 ),

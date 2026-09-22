@@ -7,7 +7,10 @@
 <div style="min-height: calc(100vh - 70px); display: flex; align-items: center; justify-content: center; padding: 2rem;">
     <div class="card" style="width: 100%; max-width: 420px; padding: 2.5rem;">
         <div style="text-align: center; margin-bottom: 2rem;">
-            <h1 style="font-size: 1.5rem; font-weight: 700; color: #0f172a;">Sign in to Secure360</h1>
+            <div style="margin-bottom: 1.25rem;">
+                <img src="<?= asset('images/logo.png') ?>" alt="Secure360" style="height: 48px; max-width: 220px; object-fit: contain;">
+            </div>
+            <h1 style="font-size: 1.35rem; font-weight: 700; color: #0f172a;">Sign in to your account</h1>
             <p style="font-size: 0.875rem; color: #475569; margin-top: 0.25rem;">Superadmin & Organisation Admin Portal</p>
         </div>
 

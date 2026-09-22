@@ -9,22 +9,21 @@ $guard = $guard ?? [];
 $nextCode = $nextCode ?? ($guard['employee_code'] ?? 'GRD-101');
 $formAction = $isEdit ? url('/admin/guards/' . (int)$guard['guard_id'] . '/edit') : url('/admin/guards/setup');
 $pageTitleText = $isEdit ? 'Edit Guard' : 'Guard Setup';
-$breadcrumbText = $isEdit ? 'Edit Guard' : 'Setup Guard';
 $hasPhoto = !empty($guard['photo_url']);
 ?>
 
 <div class="page-container">
-    <!-- Breadcrumb Navigation -->
-    <div class="app-breadcrumb">
-        <a href="<?= url('/admin/guards') ?>">Guards</a>
-        <span class="breadcrumb-separator">/</span>
-        <span class="breadcrumb-current"><?= e($breadcrumbText) ?></span>
-    </div>
+    <!-- Form Back Navigation -->
+    <a href="<?= url('/admin/guards') ?>" class="form-back-nav">
+        <svg fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/></svg>
+        <span>Back to Guards</span>
+    </a>
 
     <!-- Page Header -->
-    <div class="page-header" style="margin-bottom: 1.75rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title"><?= e($pageTitleText) ?></h1>
+            <p class="page-header-desc"><?= $isEdit ? 'Update guard account and assignment details.' : 'Register guard profile, upload photo credentials, and provision mobile app login.' ?></p>
         </div>
     </div>
 
@@ -111,7 +110,7 @@ $hasPhoto = !empty($guard['photo_url']);
                         </label>
                         <div class="input-icon-wrapper">
                             <svg class="input-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                            <input type="text" name="full_name" class="form-control" placeholder="e.g. David Vance" value="<?= e($isEdit ? ($guard['full_name'] ?? '') : '') ?>" required>
+                            <input type="text" name="full_name" class="form-control" placeholder="David Vance" value="<?= e($isEdit ? ($guard['full_name'] ?? '') : '') ?>" required>
                         </div>
                     </div>
 

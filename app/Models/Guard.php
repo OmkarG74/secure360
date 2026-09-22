@@ -78,24 +78,29 @@ class Guard extends Model
     }
 
     /**
-     * Generate the next sequential employee code for guards
+     * Generate the next sequential employee code for guards.
+     * Codes are unique per organisation (composite unique key on organization_id + employee_code).
+     * Uses MAX of the numeric suffix so gaps from deleted records never cause duplicates.
      */
     public function getNextEmployeeCode(int $organisationId): string
     {
         $stmt = $this->db->prepare(
             "SELECT employee_code FROM users 
-             WHERE organization_id = :org_id AND role_id = 3 AND employee_code LIKE 'GRD-%'
-             ORDER BY id DESC LIMIT 1"
+             WHERE organization_id = :org_id AND role_id = 3
+               AND employee_code LIKE 'GRD-%'
+               AND employee_code REGEXP '^GRD-[0-9]+$'"
         );
         $stmt->execute(['org_id' => $organisationId]);
-        $lastCode = $stmt->fetchColumn();
+        $codes = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
-        if ($lastCode && preg_match('/GRD-(\d+)/', $lastCode, $m)) {
-            $nextNum = (int)$m[1] + 1;
-            return 'GRD-' . str_pad((string)$nextNum, 3, '0', STR_PAD_LEFT);
+        $maxNum = 100;
+        foreach ($codes as $code) {
+            if (preg_match('/^GRD-(\d+)$/', $code, $m)) {
+                $maxNum = max($maxNum, (int)$m[1]);
+            }
         }
 
-        return 'GRD-101';
+        return 'GRD-' . str_pad((string)($maxNum + 1), 3, '0', STR_PAD_LEFT);
     }
 
     /**

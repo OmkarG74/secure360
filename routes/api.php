@@ -21,8 +21,9 @@ $router->group([
     'prefix' => '/api/v1',
 ], function (Router $router) {
 
-    // 1. Health check endpoint (for connectivity and DB ping)
+    // 1. Health check & timezone diagnostic endpoints
     $router->get('/health', [HealthController::class, 'check']);
+    $router->get('/timezone-diagnostic', [HealthController::class, 'timezoneDiagnostic']);
 
     // 2. Public Guard Authentication (Login)
     $router->post('/auth/guard/login', [GuardAuthController::class, 'login']);

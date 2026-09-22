@@ -66,9 +66,20 @@ class ClientSiteController extends Controller
             return true;
         });
 
-        // Attach sites
+        $filteredValues = array_values($filtered);
+        $totalFiltered = count($filteredValues);
+        $page = max(1, (int)$this->request->query('page', 1));
+        $pageSize = 10;
+        $totalPages = max(1, (int)ceil($totalFiltered / $pageSize));
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+        $offset = ($page - 1) * $pageSize;
+        $pagedCustomers = array_slice($filteredValues, $offset, $pageSize);
+
+        // Attach sites to paged customers
         $customersWithSites = [];
-        foreach ($filtered as $customer) {
+        foreach ($pagedCustomers as $customer) {
             $customer['sites'] = $customerModel->getSites((int)$customer['id'], $orgId);
             $customersWithSites[] = $customer;
         }
@@ -85,6 +96,10 @@ class ClientSiteController extends Controller
             'totalCount' => $totalCount,
             'activeCount' => $activeCount,
             'inactiveCount' => $inactiveCount,
+            'currentPage' => $page,
+            'pageSize' => $pageSize,
+            'totalRecords' => $totalFiltered,
+            'totalPages' => $totalPages,
         ], 'layouts/admin');
     }
 
@@ -157,7 +172,7 @@ class ClientSiteController extends Controller
                     $sName = trim((string)$siteInput['site_name']);
                     $sCode = !empty($siteInput['site_code']) 
                         ? trim((string)$siteInput['site_code']) 
-                        : 'SITE-' . strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $sName), 0, 4)) . '-' . rand(100, 999);
+                        : $siteModel->getNextSiteCode($orgId);
 
                     $siteModel->create([
                         'organization_id' => $orgId,
@@ -292,11 +307,11 @@ class ClientSiteController extends Controller
         }
 
         $siteCode = trim((string)$this->request->input('site_code', ''));
+        $siteModel = new Site();
         if ($siteCode === '') {
-            $siteCode = 'SITE-' . strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $siteName), 0, 4)) . '-' . rand(100, 999);
+            $siteCode = $siteModel->getNextSiteCode($orgId);
         }
 
-        $siteModel = new Site();
         $siteModel->create([
             'organization_id' => $orgId,
             'customer_id' => $customerId,

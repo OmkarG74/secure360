@@ -13,10 +13,10 @@ This document defines the strict, synchronized API contract between the Core PHP
 
 | Environment | Base URL |
 | :--- | :--- |
-| **Android Emulator** | `http://10.0.2.2/Secure360/api/v1` |
+| **Railway Production** | `https://secure360-production.up.railway.app/api/v1` |
+| **Android Emulator (Local WAMP)** | `http://10.0.2.2/Secure360/api/v1` |
 | **Physical Phone (Local Wi-Fi)** | `http://<YOUR_PC_LAN_IP>/Secure360/api/v1` |
 | **iOS Simulator / Chrome Desktop** | `http://localhost/Secure360/api/v1` |
-| **Production Server** | `https://<DOMAIN>/Secure360/api/v1` |
 
 ---
 

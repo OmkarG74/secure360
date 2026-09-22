@@ -7,19 +7,22 @@ $currentUri = $_SERVER['REQUEST_URI'] ?? '';
 $isSuperAdmin = \App\Core\Auth::role() === ROLE_SUPERADMIN;
 
 if (!function_exists('isActive')) {
-    function isActive(string $path, string $currentUri): string {
+    function isActive(string|array $paths, string $currentUri): string {
         $normalized = parse_url($currentUri, PHP_URL_PATH) ?? '';
-        return str_contains($normalized, $path) ? 'active' : '';
+        $paths = is_array($paths) ? $paths : [$paths];
+        foreach ($paths as $path) {
+            if (str_contains($normalized, $path)) {
+                return 'active';
+            }
+        }
+        return '';
     }
 }
 ?>
 <aside class="app-sidebar">
     <div class="sidebar-header">
         <a href="<?= url($isSuperAdmin ? '/superadmin/dashboard' : '/admin/dashboard') ?>" class="sidebar-logo">
-            <svg class="sidebar-logo-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-            <span>Secure<span style="color:var(--color-primary-accent);">360</span></span>
+            <img src="<?= asset('images/logo.png') ?>" alt="Secure360" style="height: 38px; max-width: 175px; object-fit: contain; display: block;">
         </a>
     </div>
 
@@ -54,7 +57,7 @@ if (!function_exists('isActive')) {
                 </svg>
                 <span>Dashboard</span>
             </a>
-            <a href="<?= url('/admin/clients-sites') ?>" class="nav-item <?= isActive('/admin/clients-sites', $currentUri) || isActive('/admin/clients', $currentUri) ?>">
+            <a href="<?= url('/admin/clients-sites') ?>" class="nav-item <?= isActive(['/admin/clients-sites', '/admin/clients'], $currentUri) ?>">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="4" y="2" width="16" height="20" rx="2" ry="2"/>
                     <line x1="9" y1="22" x2="9" y2="22.01"/>

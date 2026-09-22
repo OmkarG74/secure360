@@ -11,19 +11,16 @@ $searchQuery = $searchQuery ?? '';
 $totalCount = $totalCount ?? count($guards);
 $activeCount = $activeCount ?? 0;
 $inactiveCount = $inactiveCount ?? 0;
+$assignedCount = $assignedCount ?? 0;
+$onDutyCount = $onDutyCount ?? 0;
 ?>
 
 <div class="page-container">
     <!-- Page Header -->
-    <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div class="page-header">
         <div>
             <h1 class="page-header-title">Guards</h1>
-            <p class="page-header-desc">Personnel directory authorized for mobile Flutter duty and check-ins.</p>
         </div>
-        <a href="<?= url('/admin/guards/setup') ?>" class="btn btn-primary" style="height: 40px; padding: 0 1.25rem; display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; font-weight: 600;">
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
-            + Setup Guard
-        </a>
     </div>
 
     <?php App\Core\View::component('components/alerts'); ?>
@@ -45,12 +42,20 @@ $inactiveCount = $inactiveCount ?? 0;
                    class="filter-tab <?= $statusFilter === 'inactive' ? 'active' : '' ?>">
                     Inactive <span class="tab-count">(<?= $inactiveCount ?>)</span>
                 </a>
+                <a href="<?= url('/admin/guards?status=assigned' . ($searchQuery ? '&search=' . urlencode($searchQuery) : '')) ?>" 
+                   class="filter-tab <?= $statusFilter === 'assigned' ? 'active' : '' ?>">
+                    Assigned <span class="tab-count">(<?= $assignedCount ?>)</span>
+                </a>
+                <a href="<?= url('/admin/guards?status=on_duty' . ($searchQuery ? '&search=' . urlencode($searchQuery) : '')) ?>" 
+                   class="filter-tab <?= $statusFilter === 'on_duty' ? 'active' : '' ?>">
+                    On Duty <span class="tab-count">(<?= $onDutyCount ?>)</span>
+                </a>
             </div>
         </div>
 
-        <!-- Right: Search Input -->
-        <div class="toolbar-actions">
-            <form method="GET" action="<?= url('/admin/guards') ?>" class="toolbar-search">
+        <!-- Right: Search Input and Setup Guard Button -->
+        <div class="toolbar-actions" style="display: flex; align-items: center; gap: 0.875rem; flex-wrap: wrap;">
+            <form method="GET" action="<?= url('/admin/guards') ?>" class="toolbar-search" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
                 <input type="hidden" name="status" value="<?= e($statusFilter) ?>">
                 <div class="input-icon-wrapper" style="width: 320px;">
                     <svg class="input-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -60,6 +65,11 @@ $inactiveCount = $inactiveCount ?? 0;
                     <a href="<?= url('/admin/guards?status=' . $statusFilter) ?>" class="btn-search-clear">Clear</a>
                 <?php endif; ?>
             </form>
+
+            <a href="<?= url('/admin/guards/setup') ?>" class="btn btn-primary" style="height: 44px; padding: 0 1.25rem; border-radius: 10px; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; font-weight: 600;">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                Setup Guard
+            </a>
         </div>
     </div>
 
@@ -73,7 +83,7 @@ $inactiveCount = $inactiveCount ?? 0;
                 <p style="font-size: 1rem; font-weight: 600; color: #334155; margin-bottom: 0.25rem;">No security guards found matching criteria.</p>
                 <p style="font-size: 0.8125rem; color: #94a3b8; margin-bottom: 1.5rem;">Provision personnel to enable mobile app logins and duty rosters.</p>
                 <a href="<?= url('/admin/guards/setup') ?>" class="btn btn-outline" style="color: #2563eb; border-color: #2563eb; text-decoration: none; font-size: 0.8125rem;">
-                    + Setup First Guard
+                    Setup First Guard
                 </a>
             </div>
         <?php else: ?>
@@ -156,23 +166,32 @@ $inactiveCount = $inactiveCount ?? 0;
 
                                 <!-- Status Pill -->
                                 <td>
-                                    <?php if ((int)$g['guard_status'] === 0): ?>
-                                        <span class="badge-status active">
-                                            <span class="badge-status-dot"></span>
-                                            Active
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="badge-status inactive">
-                                            <span class="badge-status-dot"></span>
-                                            Inactive
-                                        </span>
-                                    <?php endif; ?>
+                                    <div style="display: flex; flex-direction: column; gap: 0.25rem; align-items: flex-start;">
+                                        <?php if ((int)$g['guard_status'] === 0): ?>
+                                            <span class="badge-status active">
+                                                <span class="badge-status-dot"></span>
+                                                Active
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="badge-status inactive">
+                                                <span class="badge-status-dot"></span>
+                                                Inactive
+                                            </span>
+                                        <?php endif; ?>
+
+                                        <?php if (!empty($g['is_on_duty'])): ?>
+                                            <span style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 700; color: #16a34a; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 0.15rem 0.5rem; border-radius: 9999px;">
+                                                <span style="width: 6px; height: 6px; border-radius: 50%; background: #16a34a;"></span>
+                                                On Duty
+                                            </span>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
 
                                 <!-- Last Login -->
                                 <td style="font-size: 0.8125rem; color: #64748b;">
                                     <?php if (!empty($g['last_login_at'])): ?>
-                                        <?= date('M j, Y g:i A', strtotime($g['last_login_at'])) ?>
+                                        <?= format_datetime($g['last_login_at']) ?>
                                     <?php else: ?>
                                         <span style="color: #94a3b8; font-style: italic;">Never logged in</span>
                                     <?php endif; ?>
@@ -198,16 +217,16 @@ $inactiveCount = $inactiveCount ?? 0;
                 </table>
             </div>
 
-            <!-- Pagination Footer -->
-            <div class="table-footer">
-                <div>
-                    Showing <strong><?= count($guards) ?></strong> of <strong><?= $totalCount ?></strong> guards
-                </div>
-                <div class="pagination-controls">
-                    <button class="btn-pagination" disabled>Previous</button>
-                    <button class="btn-pagination" disabled>Next</button>
-                </div>
-            </div>
+            <!-- Standardized Pagination Footer (Reference: Attendance Page) -->
+            <?php App\Core\View::component('components/pagination', [
+                'currentPage' => $currentPage ?? 1,
+                'totalRecords' => $totalRecords ?? count($guards),
+                'pageSize' => $pageSize ?? 10,
+                'queryParams' => array_filter([
+                    'status' => $statusFilter !== 'all' ? $statusFilter : null,
+                    'search' => $searchQuery ?: null,
+                ]),
+            ]); ?>
         <?php endif; ?>
     </div>
 </div>

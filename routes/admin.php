@@ -7,6 +7,7 @@ use App\Controllers\Admin\AttendanceController;
 use App\Controllers\Admin\ClientSiteController;
 use App\Controllers\Admin\ContractController;
 use App\Controllers\Admin\GuardController;
+use App\Controllers\Admin\NotificationController;
 use App\Controllers\Admin\ReportController;
 use App\Controllers\Admin\SettingsController;
 use App\Core\Router;
@@ -56,9 +57,12 @@ $router->group([
     $router->get('/contracts', [ContractController::class, 'index']);
     $router->get('/contracts/create', [ContractController::class, 'createForm']);
     $router->post('/contracts/create', [ContractController::class, 'storeContract']);
+    $router->get('/contracts/{id}/edit', [ContractController::class, 'editForm']);
+    $router->post('/contracts/{id}/edit', [ContractController::class, 'updateContract']);
 
     // 5. Attendance & Real-Time Tracking
     $router->get('/attendance', [AttendanceController::class, 'index']);
+    $router->get('/attendance/{id}', [AttendanceController::class, 'show']);
 
     // 6. Operational Reports & Telemetry
     $router->get('/reports', [ReportController::class, 'index']);
@@ -66,4 +70,9 @@ $router->group([
     // 7. Modular Organisation Settings
     $router->get('/settings', [SettingsController::class, 'index']);
     $router->post('/settings', [SettingsController::class, 'update']);
+
+    // 8. Notifications Popover API
+    $router->get('/notifications', [NotificationController::class, 'index']);
+    $router->post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
+    $router->post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
 });

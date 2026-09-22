@@ -3,20 +3,19 @@
 /// Communicates EXCLUSIVELY with the Core PHP REST APIs.
 /// Flutter never connects directly to MySQL.
 class ApiConfig {
-  /// Default fallback URL for Android Emulator pointing to local Apache/WAMP:
-  static const String _defaultBaseUrl = 'http://10.0.2.2/Secure360/api/v1';
+  /// Default production API base URL on Railway:
+  static const String _defaultBaseUrl = 'https://secure360-production.up.railway.app/api/v1';
 
   /// Base host configuration
   ///
-  /// Can be overridden dynamically when running Flutter without changing code:
-  /// - Android Emulator (default):
-  ///     flutter run -d emulator-5554
-  /// - Physical Android / iOS on Wi-Fi:
-  ///     flutter run -d <device> --dart-define=API_BASE_URL=http://192.168.1.100/Secure360/api/v1
-  /// - iOS Simulator / Localhost desktop:
-  ///     flutter run -d chrome --dart-define=API_BASE_URL=http://localhost/Secure360/api/v1
-  /// - Remote Production / Staging Server:
-  ///     flutter run --dart-define=API_BASE_URL=https://api.secure360.example.com/api/v1
+  /// Connects by default to Railway Production:
+  ///   https://secure360-production.up.railway.app/api/v1
+  ///
+  /// Can be overridden dynamically via `--dart-define` if needed:
+  /// - Local WAMP / Android Emulator:
+  ///     flutter run --dart-define=API_BASE_URL=http://10.0.2.2/Secure360/api/v1
+  /// - Local Wi-Fi Device:
+  ///     flutter run --dart-define=API_BASE_URL=http://192.168.1.100/Secure360/api/v1
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: _defaultBaseUrl,

@@ -266,23 +266,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
-          title: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.shield_outlined, color: Color(0xFF2563EB), size: 20),
-              ),
-              const SizedBox(width: 10),
-              const Text(
-                'Secure360',
-                style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-            ],
+          title: Image.asset(
+            'assets/images/logo.png',
+            height: 28,
+            fit: BoxFit.contain,
           ),
           actions: [
             // Notifications with badge (non-duplicating)
@@ -2454,7 +2441,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return TimeFormatter.formatDateTime(time);
   }
 
   Widget _buildGpsRow(String label, String value) {
