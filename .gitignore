@@ -126,3 +126,6 @@ Thumbs.db
 *.tmp
 *.temp
 *.log
+
+# Firebase Admin SDK credentials
+/storage/credentials/
