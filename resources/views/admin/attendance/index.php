@@ -4,7 +4,7 @@
  * 
  * Simplified strictly into TWO main sections with ONE standardized Reports-matching filter toolbar:
  * 1. Standardized Filter Toolbar (Date preset, status, search guards/sites, apply filter)
- * 2. ATTENDANCE MAP (Top Section) - Interactive Leaflet Map for Duty Sites & Guard Live GPS
+ * 2. ATTENDANCE MAP (Top Section) - Interactive Ola Maps Web SDK v2 Map for Duty Sites & Guard Live GPS
  * 3. ATTENDANCE RECORDS TABLE (Bottom Section) - Full attendance records with 10 records/page Pagination
  */
 
@@ -14,11 +14,14 @@ $guardLocations = $guardLocations ?? [];
 
 // Calculate initial helper counts
 $totalRecords = count($records);
+
+// Ola Maps Platform configuration
+$olaApiKey = config('app.maps.ola_api_key', '');
 ?>
 
-<!-- Leaflet CSS & JS for Interactive Map -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- MapLibre & Ola Maps Web SDK v2 for Interactive Map -->
+<link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://www.unpkg.com/olamaps-web-sdk@latest/dist/olamaps-web-sdk.umd.js"></script>
 
 <style>
 /* ==========================================================================
@@ -207,22 +210,31 @@ $totalRecords = count($records);
     100% { transform: scale(2.2); opacity: 0; }
 }
 
-/* Leaflet Popup Styling */
-.leaflet-popup-content-wrapper {
+/* MapLibre / Ola Maps Popup Styling */
+.maplibregl-popup-content {
     padding: 0;
     border-radius: 10px;
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
     overflow: hidden;
     border: 1px solid #e2e8f0;
-}
-
-.leaflet-popup-content {
     margin: 0;
     line-height: 1.4;
     font-family: inherit;
     font-size: 0.8125rem;
     min-width: 260px;
     max-width: 320px;
+}
+
+.maplibregl-popup-close-button {
+    padding: 4px 8px;
+    color: #ffffff;
+    font-size: 16px;
+    z-index: 10;
+}
+
+.maplibregl-popup-close-button:hover {
+    color: #f1f5f9;
+    background: transparent;
 }
 
 .popup-card {
@@ -804,9 +816,11 @@ const RAW_ATTENDANCE_RECORDS = <?= json_encode($records, JSON_HEX_TAG | JSON_HEX
 const ATTENDANCE_BASE_URL = '<?= url('/admin/attendance') ?>';
 
 // Global Map & Table State
+const OLA_MAPS_API_KEY = <?= json_encode($olaApiKey ?? '', JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 let mapInstance = null;
-let siteMarkersGroup = null;
-let guardMarkersGroup = null;
+let olaMapsClient = null;
+let siteMarkers = [];
+let guardMarkers = [];
 let currentLayerFilter = 'all';
 
 // Pagination & Table Filter State
@@ -818,56 +832,116 @@ const todayStr = '<?= date('Y-m-d') ?>';
 const yesterdayStr = '<?= date('Y-m-d', strtotime('-1 day')) ?>';
 
 // ==========================================================================
-// 1. Interactive Map Logic (Leaflet.js)
+// 1. Interactive Map Logic (Ola Maps Web SDK v2)
 // ==========================================================================
 function initAttendanceMap() {
     const mapElement = document.getElementById('attendanceMap');
     if (!mapElement) return;
 
-    // Default center fallback
-    const defaultCenter = [18.5204, 73.8567];
-    mapInstance = L.map('attendanceMap', {
-        zoomControl: true,
-        scrollWheelZoom: true,
-    }).setView(defaultCenter, 12);
+    // Graceful fallback if API key is not yet configured
+    if (!OLA_MAPS_API_KEY) {
+        const noticeElem = document.getElementById('mapLocationNotice');
+        if (noticeElem) {
+            noticeElem.style.display = 'flex';
+            document.getElementById('mapNoticeText').textContent = 'Ola Maps API Key Required. Configure OLA_MAPS_API_KEY in your .env file to activate interactive telemetry map.';
+        }
+        // Count valid coordinates from raw data to populate badge counters
+        let vSites = 0, vGuards = 0;
+        RAW_DUTY_SITES.forEach(s => { if (s.latitude !== null && s.longitude !== null && !isNaN(s.latitude) && !isNaN(s.longitude)) vSites++; });
+        RAW_GUARD_LOCATIONS.forEach(g => { if (g.latitude !== null && g.longitude !== null && !isNaN(g.latitude) && !isNaN(g.longitude)) vGuards++; });
+        document.getElementById('countSitesBadge').textContent = vSites;
+        document.getElementById('countGuardsBadge').textContent = vGuards;
+        return;
+    }
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
-    }).addTo(mapInstance);
+    if (typeof OlaMaps === 'undefined') {
+        console.warn('[Secure360] Ola Maps Web SDK failed to load from CDN.');
+        const noticeElem = document.getElementById('mapLocationNotice');
+        if (noticeElem) {
+            noticeElem.style.display = 'flex';
+            document.getElementById('mapNoticeText').textContent = 'Unable to load Ola Maps SDK. Please check your network connection.';
+        }
+        return;
+    }
 
-    siteMarkersGroup = L.layerGroup().addTo(mapInstance);
-    guardMarkersGroup = L.layerGroup().addTo(mapInstance);
+    // Default center fallback (Pune, Maharashtra)
+    const defaultCenter = [73.8567, 18.5204]; // NOTE: [longitude, latitude] for Ola Maps / MapLibre
+
+    try {
+        olaMapsClient = new OlaMaps({
+            apiKey: OLA_MAPS_API_KEY
+        });
+    } catch (e) {
+        console.error('[Secure360] Error initializing OlaMaps client:', e);
+        return;
+    }
+
+    try {
+        mapInstance = olaMapsClient.init({
+            style: "https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json",
+            container: 'attendanceMap',
+            center: defaultCenter,
+            zoom: 12
+        });
+    } catch (e) {
+        console.error('[Secure360] Error rendering Ola Map:', e);
+        return;
+    }
+
+    // Add navigation control
+    if (mapInstance && typeof mapInstance.addControl === 'function') {
+        try {
+            const NavControl = window.OlaMaps?.NavigationControl || window.maplibregl?.NavigationControl;
+            if (NavControl) {
+                mapInstance.addControl(new NavControl({ showCompass: false }), 'top-right');
+            }
+        } catch (ctrlErr) {
+            console.warn('[Secure360] Nav control skipped:', ctrlErr);
+        }
+    }
 
     renderMapMarkers();
 }
 
 function renderMapMarkers() {
-    siteMarkersGroup.clearLayers();
-    guardMarkersGroup.clearLayers();
+    if (!mapInstance) return;
 
-    const bounds = [];
+    // Clear existing marker instances cleanly
+    siteMarkers.forEach(item => {
+        if (item.marker && typeof item.marker.remove === 'function') {
+            item.marker.remove();
+        }
+    });
+    guardMarkers.forEach(item => {
+        if (item.marker && typeof item.marker.remove === 'function') {
+            item.marker.remove();
+        }
+    });
+    siteMarkers = [];
+    guardMarkers = [];
+
     let validSitesCount = 0;
     let validGuardsCount = 0;
+
+    const PopupClass = window.OlaMaps?.Popup || window.maplibregl?.Popup;
+    const MarkerClass = window.OlaMaps?.Marker || window.maplibregl?.Marker;
 
     // 1. Render Duty Site Markers
     RAW_DUTY_SITES.forEach(site => {
         if (site.latitude !== null && site.longitude !== null && !isNaN(site.latitude) && !isNaN(site.longitude)) {
             validSitesCount++;
-            const latLng = [site.latitude, site.longitude];
-            bounds.push(latLng);
+            const lat = parseFloat(site.latitude);
+            const lng = parseFloat(site.longitude);
+            // COORDINATE INVARIANT: Ola Maps expects [longitude, latitude]
+            const lngLat = [lng, lat];
 
-            const siteIcon = L.divIcon({
-                className: 'custom-pin-wrapper',
-                html: `
-                    <div class="custom-pin pin-site" title="Site: ${escapeHtml(site.name)}">
-                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-                    </div>
-                `,
-                iconSize: [38, 38],
-                iconAnchor: [19, 19],
-                popupAnchor: [0, -20]
-            });
+            const pinWrapper = document.createElement('div');
+            pinWrapper.className = 'custom-pin-wrapper';
+            pinWrapper.innerHTML = `
+                <div class="custom-pin pin-site" title="Site: ${escapeHtml(site.name)}">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                </div>
+            `;
 
             let guardsHtml = '<span style="color:#94a3b8; font-style:italic;">No guards assigned</span>';
             if (site.guards && site.guards.length > 0) {
@@ -908,9 +982,25 @@ function renderMapMarkers() {
                 </div>
             `;
 
-            const marker = L.marker(latLng, { icon: siteIcon });
-            marker.bindPopup(popupContent);
-            siteMarkersGroup.addLayer(marker);
+            let popup = null;
+            if (olaMapsClient && typeof olaMapsClient.addPopup === 'function') {
+                popup = olaMapsClient.addPopup({ offset: [0, -20], anchor: 'bottom', closeButton: true }).setHTML(popupContent);
+            } else if (PopupClass) {
+                popup = new PopupClass({ offset: [0, -20], anchor: 'bottom', closeButton: true }).setHTML(popupContent);
+            }
+
+            let marker = null;
+            if (olaMapsClient && typeof olaMapsClient.addMarker === 'function') {
+                marker = olaMapsClient.addMarker({ element: pinWrapper, anchor: 'center' }).setLngLat(lngLat);
+            } else if (MarkerClass) {
+                marker = new MarkerClass({ element: pinWrapper, anchor: 'center' }).setLngLat(lngLat);
+            }
+
+            if (marker) {
+                if (popup) marker.setPopup(popup);
+                marker.addTo(mapInstance);
+                siteMarkers.push({ marker: marker, lngLat: lngLat, type: 'site', visible: true });
+            }
         }
     });
 
@@ -918,23 +1008,21 @@ function renderMapMarkers() {
     RAW_GUARD_LOCATIONS.forEach(guard => {
         if (guard.latitude !== null && guard.longitude !== null && !isNaN(guard.latitude) && !isNaN(guard.longitude)) {
             validGuardsCount++;
-            const latLng = [guard.latitude, guard.longitude];
-            bounds.push(latLng);
+            const lat = parseFloat(guard.latitude);
+            const lng = parseFloat(guard.longitude);
+            // COORDINATE INVARIANT: Ola Maps expects [longitude, latitude]
+            const lngLat = [lng, lat];
 
             const isOnDuty = (guard.status === 0);
 
-            const guardIcon = L.divIcon({
-                className: 'custom-pin-wrapper',
-                html: `
-                    <div class="custom-pin pin-guard" title="Guard: ${escapeHtml(guard.guard_name)}">
-                        ${isOnDuty ? '<div class="radar-ring"></div>' : ''}
-                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                    </div>
-                `,
-                iconSize: [38, 38],
-                iconAnchor: [19, 19],
-                popupAnchor: [0, -20]
-            });
+            const pinWrapper = document.createElement('div');
+            pinWrapper.className = 'custom-pin-wrapper';
+            pinWrapper.innerHTML = `
+                <div class="custom-pin pin-guard" title="Guard: ${escapeHtml(guard.guard_name)}">
+                    ${isOnDuty ? '<div class="radar-ring"></div>' : ''}
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                </div>
+            `;
 
             const statusClass = (guard.status === 0) ? 'status-on-duty' : ((guard.status === 1) ? 'status-completed' : 'status-cancelled');
             const statusLabel = guard.status_label || (guard.status === 0 ? 'On Duty' : 'Completed');
@@ -972,57 +1060,184 @@ function renderMapMarkers() {
                 </div>
             `;
 
-            const marker = L.marker(latLng, { icon: guardIcon });
-            marker.bindPopup(popupContent);
-            guardMarkersGroup.addLayer(marker);
+            let popup = null;
+            if (olaMapsClient && typeof olaMapsClient.addPopup === 'function') {
+                popup = olaMapsClient.addPopup({ offset: [0, -20], anchor: 'bottom', closeButton: true }).setHTML(popupContent);
+            } else if (PopupClass) {
+                popup = new PopupClass({ offset: [0, -20], anchor: 'bottom', closeButton: true }).setHTML(popupContent);
+            }
+
+            let marker = null;
+            if (olaMapsClient && typeof olaMapsClient.addMarker === 'function') {
+                marker = olaMapsClient.addMarker({ element: pinWrapper, anchor: 'center' }).setLngLat(lngLat);
+            } else if (MarkerClass) {
+                marker = new MarkerClass({ element: pinWrapper, anchor: 'center' }).setLngLat(lngLat);
+            }
+
+            if (marker) {
+                if (popup) marker.setPopup(popup);
+                marker.addTo(mapInstance);
+                guardMarkers.push({ marker: marker, lngLat: lngLat, type: 'guard', visible: true });
+            }
         }
     });
 
-    // Update Counter Badges
+    // Update Counter Badges (represents available counts, not filtered counts)
     document.getElementById('countSitesBadge').textContent = validSitesCount;
     document.getElementById('countGuardsBadge').textContent = validGuardsCount;
 
-    // Notice & Bounds adjustment
-    const noticeElem = document.getElementById('mapLocationNotice');
-    if (bounds.length > 0) {
-        mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-        noticeElem.style.display = 'none';
-    } else {
-        noticeElem.style.display = 'flex';
-        document.getElementById('mapNoticeText').textContent = 'No GPS coordinates configured yet for duty sites or guards.';
+    // Apply current layer filter state to newly rendered markers
+    setMapLayerFilter(currentLayerFilter);
+
+    // Initial viewport bounds adjustment
+    fitMapBounds();
+}
+
+/**
+ * Single source of truth for currently visible marker coordinates
+ * @returns {Array<[number, number]>} Array of [longitude, latitude] pairs
+ */
+function getVisibleMapCoordinates() {
+    const coords = [];
+    if (currentLayerFilter === 'all' || currentLayerFilter === 'sites') {
+        siteMarkers.forEach(item => {
+            if (item.visible && item.lngLat) {
+                coords.push(item.lngLat);
+            }
+        });
     }
+    if (currentLayerFilter === 'all' || currentLayerFilter === 'guards') {
+        guardMarkers.forEach(item => {
+            if (item.visible && item.lngLat) {
+                coords.push(item.lngLat);
+            }
+        });
+    }
+    return coords;
 }
 
 function setMapLayerFilter(type) {
     currentLayerFilter = type;
-    document.getElementById('btnMapAll').classList.toggle('active', type === 'all');
-    document.getElementById('btnMapSites').classList.toggle('active', type === 'sites');
-    document.getElementById('btnMapGuards').classList.toggle('active', type === 'guards');
 
-    if (type === 'all') {
-        if (!mapInstance.hasLayer(siteMarkersGroup)) mapInstance.addLayer(siteMarkersGroup);
-        if (!mapInstance.hasLayer(guardMarkersGroup)) mapInstance.addLayer(guardMarkersGroup);
-    } else if (type === 'sites') {
-        if (!mapInstance.hasLayer(siteMarkersGroup)) mapInstance.addLayer(siteMarkersGroup);
-        if (mapInstance.hasLayer(guardMarkersGroup)) mapInstance.removeLayer(guardMarkersGroup);
-    } else if (type === 'guards') {
-        if (mapInstance.hasLayer(siteMarkersGroup)) mapInstance.removeLayer(siteMarkersGroup);
-        if (!mapInstance.hasLayer(guardMarkersGroup)) mapInstance.addLayer(guardMarkersGroup);
+    const btnAll = document.getElementById('btnMapAll');
+    const btnSites = document.getElementById('btnMapSites');
+    const btnGuards = document.getElementById('btnMapGuards');
+
+    if (btnAll) btnAll.classList.toggle('active', type === 'all');
+    if (btnSites) btnSites.classList.toggle('active', type === 'sites');
+    if (btnGuards) btnGuards.classList.toggle('active', type === 'guards');
+
+    const showSites = (type === 'all' || type === 'sites');
+    const showGuards = (type === 'all' || type === 'guards');
+
+    // Toggle Site Markers visibility via Ola Maps marker lifecycle
+    siteMarkers.forEach(item => {
+        if (!item.marker) return;
+        if (showSites) {
+            if (!item.visible) {
+                if (mapInstance && typeof item.marker.addTo === 'function') {
+                    item.marker.addTo(mapInstance);
+                }
+                item.visible = true;
+            }
+        } else {
+            if (item.visible) {
+                if (typeof item.marker.remove === 'function') {
+                    item.marker.remove();
+                }
+                item.visible = false;
+            }
+        }
+    });
+
+    // Toggle Guard Markers visibility via Ola Maps marker lifecycle
+    guardMarkers.forEach(item => {
+        if (!item.marker) return;
+        if (showGuards) {
+            if (!item.visible) {
+                if (mapInstance && typeof item.marker.addTo === 'function') {
+                    item.marker.addTo(mapInstance);
+                }
+                item.visible = true;
+            }
+        } else {
+            if (item.visible) {
+                if (typeof item.marker.remove === 'function') {
+                    item.marker.remove();
+                }
+                item.visible = false;
+            }
+        }
+    });
+
+    // Notice & Empty-state overlay update
+    const visibleCoords = getVisibleMapCoordinates();
+    const noticeElem = document.getElementById('mapLocationNotice');
+    const noticeText = document.getElementById('mapNoticeText');
+    if (noticeElem) {
+        if (visibleCoords.length === 0) {
+            noticeElem.style.display = 'flex';
+            if (noticeText) {
+                if (type === 'sites') {
+                    noticeText.textContent = 'No duty sites with registered GPS coordinates.';
+                } else if (type === 'guards') {
+                    noticeText.textContent = 'No guards with active GPS telemetry.';
+                } else {
+                    noticeText.textContent = 'No GPS coordinates configured yet for duty sites or guards.';
+                }
+            }
+        } else {
+            noticeElem.style.display = 'none';
+        }
     }
 }
 
 function fitMapBounds() {
-    if (!mapInstance) return;
-    const bounds = [];
-    if (currentLayerFilter === 'all' || currentLayerFilter === 'sites') {
-        siteMarkersGroup.eachLayer(l => bounds.push(l.getLatLng()));
+    if (!mapInstance || typeof mapInstance.fitBounds !== 'function') return;
+
+    const activeCoords = getVisibleMapCoordinates();
+
+    if (activeCoords.length === 0) {
+        return;
     }
-    if (currentLayerFilter === 'all' || currentLayerFilter === 'guards') {
-        guardMarkersGroup.eachLayer(l => bounds.push(l.getLatLng()));
+
+    if (activeCoords.length === 1) {
+        if (typeof mapInstance.setCenter === 'function') {
+            mapInstance.setCenter(activeCoords[0]);
+        }
+        if (typeof mapInstance.setZoom === 'function') {
+            mapInstance.setZoom(14);
+        }
+        return;
     }
-    if (bounds.length > 0) {
-        mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+
+    let minLng = activeCoords[0][0];
+    let maxLng = activeCoords[0][0];
+    let minLat = activeCoords[0][1];
+    let maxLat = activeCoords[0][1];
+
+    for (let i = 1; i < activeCoords.length; i++) {
+        const lng = activeCoords[i][0];
+        const lat = activeCoords[i][1];
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
     }
+
+    const BoundsClass = window.OlaMaps?.LngLatBounds || window.maplibregl?.LngLatBounds;
+    if (BoundsClass) {
+        try {
+            const bounds = new BoundsClass([minLng, minLat], [maxLng, maxLat]);
+            mapInstance.fitBounds(bounds, { padding: 50, maxZoom: 15 });
+            return;
+        } catch (boundsErr) {
+            console.warn('[Secure360] BoundsClass construction failed, using bbox array:', boundsErr);
+        }
+    }
+
+    // Direct 2D coordinate bbox fallback supported natively by MapLibre / Ola Maps
+    mapInstance.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50, maxZoom: 15 });
 }
 
 // ==========================================================================
@@ -1441,9 +1656,15 @@ document.addEventListener('DOMContentLoaded', () => {
     renderAttendanceTable();
 
     setTimeout(() => {
-        if (mapInstance) {
-            mapInstance.invalidateSize();
+        if (mapInstance && typeof mapInstance.resize === 'function') {
+            mapInstance.resize();
         }
     }, 250);
+
+    window.addEventListener('resize', () => {
+        if (mapInstance && typeof mapInstance.resize === 'function') {
+            mapInstance.resize();
+        }
+    });
 });
 </script>

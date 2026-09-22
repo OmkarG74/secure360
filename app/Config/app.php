@@ -46,4 +46,12 @@ return [
         'max_size' => (int)(getenv('UPLOAD_MAX_SIZE') ?: 10485760),
         'allowed_types' => explode(',', getenv('UPLOAD_ALLOWED_TYPES') ?: 'jpg,jpeg,png,pdf,doc,docx'),
     ],
+
+    // Maps Configuration (Ola Maps / Krutrim Maps Web SDK v2)
+    'maps' => [
+        'ola_api_key' => getenv('OLA_MAPS_API_KEY') ?: '',
+        'default_lat' => 18.5204,
+        'default_lng' => 73.8567,
+        'default_zoom' => 12,
+    ],
 ];
