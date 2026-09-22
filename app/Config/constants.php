@@ -31,6 +31,23 @@ if (!defined('STATUS_DELETED')) {
     define('STATUS_DELETED', 2);
 }
 
+// Subscription Status Codes (Matches tinyint: 0=active, 1=expiring_soon, 2=expired, 3=suspended, 4=cancelled)
+if (!defined('SUBSCRIPTION_ACTIVE')) {
+    define('SUBSCRIPTION_ACTIVE', 0);
+}
+if (!defined('SUBSCRIPTION_EXPIRING_SOON')) {
+    define('SUBSCRIPTION_EXPIRING_SOON', 1);
+}
+if (!defined('SUBSCRIPTION_EXPIRED')) {
+    define('SUBSCRIPTION_EXPIRED', 2);
+}
+if (!defined('SUBSCRIPTION_SUSPENDED')) {
+    define('SUBSCRIPTION_SUSPENDED', 3);
+}
+if (!defined('SUBSCRIPTION_CANCELLED')) {
+    define('SUBSCRIPTION_CANCELLED', 4);
+}
+
 // Attendance Status Codes (Matches tinyint: 0=open, 1=completed, 2=cancelled)
 if (!defined('ATTENDANCE_STATUS_OPEN')) {
     define('ATTENDANCE_STATUS_OPEN', 0);

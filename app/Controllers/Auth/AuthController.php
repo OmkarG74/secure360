@@ -65,6 +65,17 @@ class AuthController extends Controller
             return;
         }
 
+        // Check if tenant organisation is suspended
+        if (!empty($user['organization_id'])) {
+            $orgModel = new \App\Models\Organization();
+            $org = $orgModel->find((int)$user['organization_id']);
+            if (!$org || (int)$org['status'] !== 0) {
+                $this->setFlash('error', 'Your organisation is currently suspended. Please contact the platform administrator.');
+                $this->redirect('/login');
+                return;
+            }
+        }
+
         // Guards access operations exclusively via the Flutter mobile client
         if ($user['role_code'] === ROLE_GUARD) {
             $this->setFlash('error', 'Security Guards must access operations via the Secure360 Flutter Mobile App.');

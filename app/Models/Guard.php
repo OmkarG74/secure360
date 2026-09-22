@@ -36,6 +36,25 @@ class Guard extends Model
     }
 
     /**
+     * Count total active guards for an organization
+     * (consuming a licensed subscription slot)
+     */
+    public function countActiveGuards(int $organisationId): int
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM {$this->table} g
+             JOIN users u ON g.user_id = u.id
+             WHERE u.organization_id = :org_id
+               AND g.status = 0
+               AND u.status = 0
+               AND g.deleted_at IS NULL
+               AND u.deleted_at IS NULL"
+        );
+        $stmt->execute(['org_id' => $organisationId]);
+        return (int)$stmt->fetchColumn();
+    }
+
+    /**
      * Find single guard with complete user profile
      */
     public function findByGuardId(int $guardId, int $organisationId): ?array

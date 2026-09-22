@@ -18,8 +18,9 @@ class NotificationController extends Controller
 {
     private Notification $notificationModel;
 
-    public function __construct()
+    public function __construct(?Request $request = null, ?Response $response = null)
     {
+        parent::__construct($request, $response);
         $this->notificationModel = new Notification();
     }
 

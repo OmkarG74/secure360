@@ -17,7 +17,7 @@ $generatedCode = $generatedCode ?? 'ORG-' . strtoupper(substr(bin2hex(random_byt
     <div class="page-header">
         <div>
             <h1 class="page-header-title">Onboard New Tenant Organisation</h1>
-            <p class="page-header-desc">Create a new customer tenant entity and provision administrator access.</p>
+            <p class="page-header-desc">Create a new customer tenant entity and provision administrator access. Subscriptions are configured separately in the Subscriptions module.</p>
         </div>
     </div>
 
@@ -28,45 +28,57 @@ $generatedCode = $generatedCode ?? 'ORG-' . strtoupper(substr(bin2hex(random_byt
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.75rem; align-items: start;">
         
-        <!-- Organisation Profile (Entered Only Once) -->
-        <div class="card" style="padding: 1.75rem;">
-            <h3 style="font-size: 1.0625rem; font-weight: 600; color: #0f172a; margin-bottom: 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
-                Organisation Entity
-            </h3>
+        <!-- Left Column: Organisation Profile & Subscription -->
+        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <!-- Organisation Profile (Entered Only Once) -->
+            <div class="card" style="padding: 1.75rem;">
+                <h3 style="font-size: 1.0625rem; font-weight: 600; color: #0f172a; margin-bottom: 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
+                    Organisation Entity
+                </h3>
 
-            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                <div>
-                    <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">
-                        Organisation / Agency Name <span style="color: #ef4444;">*</span>
-                    </label>
-                    <input type="text" name="name" class="form-control" placeholder="Apex Security Services" required>
-                </div>
+                <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                    <div>
+                        <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">
+                            Organisation / Agency Name <span style="color: #ef4444;">*</span>
+                        </label>
+                        <input type="text" name="name" class="form-control" placeholder="Apex Security Services" required>
+                    </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div>
-                        <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Tenant Code</label>
-                        <input type="text" name="organization_code" class="form-control" value="<?= e($generatedCode) ?>" style="background: #f8fafc; font-family: monospace; font-weight: 700;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div>
+                            <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Tenant Code</label>
+                            <input type="text" name="organization_code" class="form-control" value="<?= e($generatedCode) ?>" style="background: #f8fafc; font-family: monospace; font-weight: 700;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Contact Person</label>
+                            <input type="text" name="contact_person" class="form-control" placeholder="Managing Director">
+                        </div>
                     </div>
-                    <div>
-                        <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Contact Person</label>
-                        <input type="text" name="contact_person" class="form-control" placeholder="Managing Director">
-                    </div>
-                </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div>
-                        <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Agency Email</label>
-                        <input type="email" name="email" class="form-control" placeholder="contact@agency.com">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div>
+                            <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Agency Email</label>
+                            <input type="email" name="email" class="form-control" placeholder="contact@agency.com">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Agency Phone</label>
+                            <input type="text" name="phone" class="form-control" placeholder="+1 (555) 0100">
+                        </div>
                     </div>
-                    <div>
-                        <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Agency Phone</label>
-                        <input type="text" name="phone" class="form-control" placeholder="+1 (555) 0100">
-                    </div>
-                </div>
 
-                <div>
-                    <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Headquarters Address</label>
-                    <textarea name="address" class="form-control" rows="3" placeholder="Corporate HQ location"></textarea>
+                    <div>
+                        <div>
+                            <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Headquarters Address</label>
+                            <textarea name="address" class="form-control" rows="3" placeholder="Corporate HQ location, city, state, postal code"></textarea>
+                        </div>
+
+                        <div style="padding: 1rem 1.15rem; background: #eff6ff; border: 1px solid #dbeafe; border-radius: 8px; display: flex; gap: 0.75rem; align-items: flex-start; margin-top: 0.5rem;">
+                            <svg width="18" height="18" fill="none" stroke="#2563eb" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink: 0; margin-top: 0.15rem;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            <div style="font-size: 0.75rem; color: #1e40af; line-height: 1.45;">
+                                <strong>Note:</strong> Subscriptions and guard licensing are managed exclusively in the <strong>Subscriptions</strong> section. After onboarding this organisation, you can provision its subscription there.
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -104,6 +116,11 @@ $generatedCode = $generatedCode ?? 'ORG-' . strtoupper(substr(bin2hex(random_byt
                                 Admin Login Email <span style="color: #ef4444;">*</span>
                             </label>
                             <input type="email" name="admins[0][email]" class="form-control admin-email-input" placeholder="admin@agency.com" required>
+                        </div>
+
+                        <div>
+                            <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Admin Phone Number</label>
+                            <input type="text" name="admins[0][phone]" class="form-control" placeholder="+91 98765 43210">
                         </div>
 
                         <div>
@@ -180,6 +197,11 @@ function addNewAdminSection() {
                     Admin Login Email <span style="color: #ef4444;">*</span>
                 </label>
                 <input type="email" name="admins[${adminIndex}][email]" class="form-control admin-email-input" placeholder="sarah@agency.com" required>
+            </div>
+
+            <div>
+                <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.4rem;">Admin Phone Number</label>
+                <input type="text" name="admins[${adminIndex}][phone]" class="form-control" placeholder="+91 98765 43210">
             </div>
 
             <div>

@@ -210,6 +210,9 @@ class AdminDashboardController extends Controller
 
         $offDutyGuards = max(0, $totalGuards - $onDutyGuards);
 
+        $subService = new \App\Services\SubscriptionService();
+        $subDetails = $subService->getSubscriptionDetails($orgId);
+
         $this->render('admin/dashboard/index', [
             'pageTitle' => 'Admin Operations Dashboard - Secure360',
             'user' => Auth::user(),
@@ -228,6 +231,7 @@ class AdminDashboardController extends Controller
             'guardLocations' => $guardLocations,
             'recentAttendance' => $recentAttendance,
             'recentActivities' => $recentActivities,
+            'subDetails' => $subDetails,
         ], 'layouts/admin');
     }
 }
