@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:image_picker/image_picker.dart';
+import 'front_camera_selfie_screen.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/utils/distance_formatter.dart';
@@ -33,7 +33,6 @@ class CheckOutScreen extends StatefulWidget {
 
 class _CheckOutScreenState extends State<CheckOutScreen> {
   final _notesController = TextEditingController();
-  final _picker = ImagePicker();
 
   Position? _currentPosition;
   bool _isLocating = false;
@@ -119,20 +118,23 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
     });
 
     try {
-      final photo = await _picker.pickImage(
-        source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.front,
-        imageQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
+      final File? capturedFile = await Navigator.of(context).push<File>(
+        MaterialPageRoute(builder: (_) => const FrontCameraSelfieScreen()),
       );
 
       if (!mounted) return;
 
       setState(() {
         _isCapturingSelfie = false;
+<<<<<<< HEAD
         if (photo != null) {
           _selfieFile = File(photo.path);
+=======
+        if (capturedFile != null) {
+          _selfieFile = capturedFile;
+          _selfieError = null;
+          _submissionError = null;
+>>>>>>> a228257 (Add selfie camera and authentication hardening)
         }
       });
     } catch (e) {

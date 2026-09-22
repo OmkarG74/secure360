@@ -12,8 +12,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController(text: 'guard@apexsecurity.com');
-  final _passwordController = TextEditingController(text: 'password123');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -157,6 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [],
                         decoration: InputDecoration(
                           prefixIcon: const Icon(Icons.email_outlined, size: 20),
                           hintText: 'guard@apexsecurity.com',
@@ -186,6 +187,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextField(
                         controller: _passwordController,
                         obscureText: true,
+                        autofillHints: const [],
                         decoration: InputDecoration(
                           prefixIcon: const Icon(Icons.lock_outline, size: 20),
                           hintText: '••••••••',
