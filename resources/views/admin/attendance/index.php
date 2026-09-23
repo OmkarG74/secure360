@@ -11,6 +11,15 @@
 $records = $records ?? [];
 $dutySites = $dutySites ?? [];
 $guardLocations = $guardLocations ?? [];
+$filterOptions = $filterOptions ?? ['clients' => [], 'sites' => [], 'guards' => []];
+$preset = $preset ?? 'all';
+$fromDate = $fromDate ?? '';
+$toDate = $toDate ?? '';
+$customerId = $customerId ?? null;
+$siteId = $siteId ?? null;
+$guardId = $guardId ?? null;
+$status = $status ?? 'all';
+$search = $search ?? '';
 
 // Calculate initial helper counts
 $totalRecords = count($records);
@@ -193,6 +202,8 @@ $olaApiKey = config('app.maps.ola_api_key', '');
 
 .pin-site { background: #1d4ed8; }
 .pin-guard { background: #10b981; }
+.pin-guard-offduty { background: #64748b; }
+.pin-guard-cancelled { background: #ef4444; }
 
 .radar-ring {
     position: absolute;
@@ -695,47 +706,82 @@ $olaApiKey = config('app.maps.ola_api_key', '');
          STANDARDIZED FILTER & SEARCH TOOLBAR (BELOW THE MAP)
          ==================================================================== -->
     <div class="reports-filter-card" style="margin-bottom: 0;">
-        <form method="GET" action="<?= url('/admin/attendance') ?>" class="reports-toolbar-form" id="attendanceFilterForm" onsubmit="event.preventDefault(); handleFilterChange();">
+        <form method="GET" action="<?= url('/admin/attendance') ?>" class="reports-toolbar-form" id="attendanceFilterForm">
             <!-- Date Preset Dropdown -->
             <div class="filter-control-group">
                 <label for="datePresetSelect" class="filter-control-label">Date:</label>
                 <select name="preset" id="datePresetSelect" class="filter-select" onchange="handlePresetChange(this.value)">
-                    <option value="today">Today</option>
-                    <option value="yesterday">Yesterday</option>
-                    <option value="specific">Specific Date</option>
-                    <option value="custom">Custom Date Range</option>
-                    <option value="all" selected>All Time</option>
+                    <option value="all" <?= ($preset === 'all') ? 'selected' : '' ?>>All Time</option>
+                    <option value="today" <?= ($preset === 'today') ? 'selected' : '' ?>>Today</option>
+                    <option value="yesterday" <?= ($preset === 'yesterday') ? 'selected' : '' ?>>Yesterday</option>
+                    <option value="this_week" <?= ($preset === 'this_week') ? 'selected' : '' ?>>This Week</option>
+                    <option value="this_month" <?= ($preset === 'this_month') ? 'selected' : '' ?>>This Month</option>
+                    <option value="last_month" <?= ($preset === 'last_month') ? 'selected' : '' ?>>Last Month</option>
+                    <option value="custom" <?= ($preset === 'custom') ? 'selected' : '' ?>>Custom Range</option>
                 </select>
             </div>
 
-            <!-- Specific / From Date Selector -->
-            <div class="filter-control-group" id="fromDateGroup" style="display: none;">
-                <label for="fromDatePicker" class="filter-control-label" id="fromDateLabel">Date:</label>
-                <input type="date" name="from_date" id="fromDatePicker" class="filter-date-input" value="" onchange="handleFilterChange()">
+            <!-- From Date Selector (Shown for Custom Range) -->
+            <div class="filter-control-group" id="fromDateGroup" style="<?= ($preset === 'custom') ? 'display: inline-flex;' : 'display: none;' ?>">
+                <label for="fromDatePicker" class="filter-control-label" id="fromDateLabel">From:</label>
+                <input type="date" name="from_date" id="fromDatePicker" class="filter-date-input" value="<?= e($fromDate ?? '') ?>">
             </div>
 
-            <!-- To Date Selector (Only shown for Custom Range) -->
-            <div class="filter-control-group" id="toDateGroup" style="display: none;">
+            <!-- To Date Selector (Shown for Custom Range) -->
+            <div class="filter-control-group" id="toDateGroup" style="<?= ($preset === 'custom') ? 'display: inline-flex;' : 'display: none;' ?>">
                 <label for="toDatePicker" class="filter-control-label">To:</label>
-                <input type="date" name="to_date" id="toDatePicker" class="filter-date-input" value="" onchange="handleFilterChange()">
+                <input type="date" name="to_date" id="toDatePicker" class="filter-date-input" value="<?= e($toDate ?? '') ?>">
+            </div>
+
+            <!-- Client Dropdown -->
+            <div class="filter-control-group">
+                <label for="filterClientSelect" class="filter-control-label">Client:</label>
+                <select name="customer_id" id="filterClientSelect" class="filter-select" onchange="onClientChange(this.value)">
+                    <option value="">All Clients</option>
+                    <?php foreach ($filterOptions['clients'] as $c): ?>
+                        <option value="<?= $c['id'] ?>" <?= ((int)$customerId === (int)$c['id']) ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <!-- Site Dropdown -->
+            <div class="filter-control-group">
+                <label for="filterSiteSelect" class="filter-control-label">Site:</label>
+                <select name="site_id" id="filterSiteSelect" class="filter-select" onchange="onSiteChange(this.value)">
+                    <option value="">All Sites</option>
+                    <?php foreach ($filterOptions['sites'] as $s): ?>
+                        <option value="<?= $s['id'] ?>" <?= ((int)$siteId === (int)$s['id']) ? 'selected' : '' ?>><?= e($s['site_name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <!-- Guard Dropdown -->
+            <div class="filter-control-group">
+                <label for="filterGuardSelect" class="filter-control-label">Guard:</label>
+                <select name="guard_id" id="filterGuardSelect" class="filter-select">
+                    <option value="">All Guards</option>
+                    <?php foreach ($filterOptions['guards'] as $g): ?>
+                        <option value="<?= $g['guard_id'] ?>" <?= ((int)$guardId === (int)$g['guard_id']) ? 'selected' : '' ?>><?= e($g['full_name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
             </div>
 
             <!-- Status Filter Dropdown -->
             <div class="filter-control-group">
                 <label for="tableStatusFilter" class="filter-control-label">Status:</label>
-                <select name="status" id="tableStatusFilter" class="filter-select" onchange="handleFilterChange()">
-                    <option value="all">All Statuses</option>
-                    <option value="0">On Duty (Active)</option>
-                    <option value="1">Completed</option>
-                    <option value="2">Cancelled</option>
+                <select name="status" id="tableStatusFilter" class="filter-select">
+                    <option value="all" <?= ($status === 'all') ? 'selected' : '' ?>>All Statuses</option>
+                    <option value="0" <?= ($status === '0') ? 'selected' : '' ?>>On Duty</option>
+                    <option value="1" <?= ($status === '1') ? 'selected' : '' ?>>Completed</option>
+                    <option value="2" <?= ($status === '2') ? 'selected' : '' ?>>Cancelled</option>
                 </select>
             </div>
 
-            <!-- Standardized Search Bar matching Guards & Reports reference -->
-            <div class="toolbar-search" style="flex: 1; min-width: 240px;">
+            <!-- Standardized Search Bar -->
+            <div class="toolbar-search" style="flex: 1; min-width: 200px;">
                 <div class="input-icon-wrapper" style="width: 100%;">
                     <svg class="input-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                    <input type="text" name="search" id="tableSearchInput" class="form-control" placeholder="Search guards, sites..." value="" oninput="handleFilterChange()">
+                    <input type="text" name="search" id="tableSearchInput" class="form-control" placeholder="Search guards, sites, clients..." value="<?= e($search ?? '') ?>" oninput="filterRecords()">
                 </div>
             </div>
 
@@ -746,7 +792,10 @@ $olaApiKey = config('app.maps.ola_api_key', '');
             </button>
 
             <!-- Reset Filter Button -->
-            <button type="button" class="btn-filter-reset" id="btnResetFilter" style="display: none;" onclick="resetTableFilters()">
+            <?php
+                $isFiltered = ($preset !== 'all') || (!empty($customerId)) || (!empty($siteId)) || (!empty($guardId)) || ($status !== 'all') || (!empty($search));
+            ?>
+            <button type="button" class="btn-filter-reset" id="btnResetFilter" style="<?= $isFiltered ? 'display: inline-flex;' : 'display: none;' ?>" onclick="resetTableFilters()">
                 <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
                 Reset
             </button>
@@ -939,8 +988,11 @@ function initAttendanceMap() {
     renderMapMarkers();
 }
 
-function renderMapMarkers() {
+function renderMapMarkers(sitesToRender, guardsToRender) {
     if (!mapInstance) return;
+
+    const sites = (sitesToRender !== undefined) ? sitesToRender : RAW_DUTY_SITES;
+    const guards = (guardsToRender !== undefined) ? guardsToRender : RAW_GUARD_LOCATIONS;
 
     // Clear existing marker instances cleanly
     siteMarkers.forEach(item => {
@@ -963,7 +1015,7 @@ function renderMapMarkers() {
     const MarkerClass = window.OlaMaps?.Marker || window.maplibregl?.Marker;
 
     // 1. Render Duty Site Markers
-    RAW_DUTY_SITES.forEach(site => {
+    sites.forEach(site => {
         if (site.latitude !== null && site.longitude !== null && !isNaN(site.latitude) && !isNaN(site.longitude)) {
             validSitesCount++;
             const lat = parseFloat(site.latitude);
@@ -987,7 +1039,7 @@ function renderMapMarkers() {
             }
 
             const shiftDisplay = site.shift_name ? 
-                `${escapeHtml(site.shift_name)} ${site.shift_start ? `(${site.shift_start.substring(0,5)} - ${site.shift_end ? site.shift_end.substring(0,5) : ''})` : ''}` : 
+                `${escapeHtml(site.shift_name)} ${site.shift_start ? `(${formatTime(site.shift_start)} - ${site.shift_end ? formatTime(site.shift_end) : ''})` : ''}` : 
                 'Standard Shift';
 
             const popupContent = `
@@ -1040,8 +1092,8 @@ function renderMapMarkers() {
         }
     });
 
-    // 2. Render Guard Live GPS Markers
-    RAW_GUARD_LOCATIONS.forEach(guard => {
+    // 2. Render Guard GPS Markers
+    guards.forEach(guard => {
         if (guard.latitude !== null && guard.longitude !== null && !isNaN(guard.latitude) && !isNaN(guard.longitude)) {
             validGuardsCount++;
             const lat = parseFloat(guard.latitude);
@@ -1049,19 +1101,38 @@ function renderMapMarkers() {
             // COORDINATE INVARIANT: Ola Maps expects [longitude, latitude]
             const lngLat = [lng, lat];
 
-            const isOnDuty = (guard.status === 0);
+            const statusInt = parseInt(guard.status, 10);
+            const isOnDuty = (statusInt === 0);
+            let pinClass = 'pin-guard';
+            if (statusInt === 1) {
+                pinClass = 'pin-guard pin-guard-offduty';
+            } else if (statusInt === 2) {
+                pinClass = 'pin-guard pin-guard-cancelled';
+            }
 
             const pinWrapper = document.createElement('div');
             pinWrapper.className = 'custom-pin-wrapper';
             pinWrapper.innerHTML = `
-                <div class="custom-pin pin-guard" title="Guard: ${escapeHtml(guard.guard_name)}">
+                <div class="custom-pin ${pinClass}" title="Guard: ${escapeHtml(guard.guard_name)}">
                     ${isOnDuty ? '<div class="radar-ring"></div>' : ''}
                     <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                 </div>
             `;
 
-            const statusClass = (guard.status === 0) ? 'status-on-duty' : ((guard.status === 1) ? 'status-completed' : 'status-cancelled');
-            const statusLabel = guard.status_label || (guard.status === 0 ? 'On Duty' : 'Completed');
+            const statusClass = (statusInt === 0) ? 'status-on-duty' : ((statusInt === 1) ? 'status-completed' : 'status-cancelled');
+            const statusLabel = guard.status_label || (statusInt === 0 ? 'On Duty' : (statusInt === 1 ? 'Completed' : 'Cancelled'));
+
+            let sourceLabel = 'Live Telemetry';
+            if (guard.source === 'attendance_checkout') {
+                sourceLabel = 'Checkout GPS';
+            } else if (guard.source === 'attendance_checkin') {
+                sourceLabel = 'Check-in GPS';
+            } else if (guard.source === 'live_telemetry') {
+                sourceLabel = 'Live Telemetry';
+            }
+
+            const dateLabel = guard.location_date ? formatDate(guard.location_date) : 'Today';
+            const lastUpdateFormatted = guard.last_update ? formatDateTime(guard.last_update) : 'Recent telemetry';
 
             const popupContent = `
                 <div class="popup-card">
@@ -1088,8 +1159,16 @@ function renderMapMarkers() {
                             </span>
                         </div>
                         <div class="popup-row">
-                            <span class="popup-label">Last GPS Ping:</span>
-                            <span class="popup-val" style="color:#059669; font-weight:600;">${guard.last_update ? formatDateTime(guard.last_update) : 'Recent telemetry'}</span>
+                            <span class="popup-label">Date:</span>
+                            <span class="popup-val" style="font-weight: 700;">${dateLabel}</span>
+                        </div>
+                        <div class="popup-row">
+                            <span class="popup-label">Last Recorded:</span>
+                            <span class="popup-val" style="color:#059669; font-weight:600;">${lastUpdateFormatted}</span>
+                        </div>
+                        <div class="popup-row">
+                            <span class="popup-label">GPS Source:</span>
+                            <span class="popup-val" style="font-size:0.6875rem; color:#64748b;">${sourceLabel}</span>
                         </div>
                         ${guard.address ? `<div class="popup-row" style="border-top: 1px dashed #e2e8f0; padding-top: 0.35rem; margin-top: 0.25rem;"><span class="popup-label">Address:</span><span class="popup-val" style="font-size:0.6875rem; color:#64748b;">${escapeHtml(guard.address)}</span></div>` : ''}
                     </div>
@@ -1118,14 +1197,14 @@ function renderMapMarkers() {
         }
     });
 
-    // Update Counter Badges (represents available counts, not filtered counts)
+    // Update Counter Badges
     document.getElementById('countSitesBadge').textContent = validSitesCount;
     document.getElementById('countGuardsBadge').textContent = validGuardsCount;
 
     // Apply current layer filter state to newly rendered markers
     setMapLayerFilter(currentLayerFilter);
 
-    // Initial viewport bounds adjustment
+    // Viewport bounds adjustment
     fitMapBounds();
 }
 
@@ -1288,57 +1367,101 @@ function fitMapBounds() {
 function handlePresetChange(preset) {
     const fromGroup = document.getElementById('fromDateGroup');
     const toGroup = document.getElementById('toDateGroup');
-    const fromLabel = document.getElementById('fromDateLabel');
     const fromPicker = document.getElementById('fromDatePicker');
     const toPicker = document.getElementById('toDatePicker');
 
-    if (preset === 'today') {
-        fromGroup.style.display = 'none';
-        toGroup.style.display = 'none';
-        fromPicker.value = todayStr;
-        toPicker.value = todayStr;
-    } else if (preset === 'yesterday') {
-        fromGroup.style.display = 'none';
-        toGroup.style.display = 'none';
-        fromPicker.value = yesterdayStr;
-        toPicker.value = yesterdayStr;
-    } else if (preset === 'specific') {
-        fromGroup.style.display = 'inline-flex';
-        toGroup.style.display = 'none';
-        fromLabel.textContent = 'Date:';
-        if (!fromPicker.value) fromPicker.value = todayStr;
-    } else if (preset === 'custom') {
+    if (preset === 'custom') {
         fromGroup.style.display = 'inline-flex';
         toGroup.style.display = 'inline-flex';
-        fromLabel.textContent = 'From:';
         if (!fromPicker.value) fromPicker.value = todayStr;
         if (!toPicker.value) toPicker.value = todayStr;
-    } else if (preset === 'all') {
+    } else {
         fromGroup.style.display = 'none';
         toGroup.style.display = 'none';
-        fromPicker.value = '';
-        toPicker.value = '';
+    }
+}
+
+/**
+ * Cascading AJAX: Client change updates Site and Guard options
+ */
+function onClientChange(clientId) {
+    const siteSelect = document.getElementById('filterSiteSelect');
+    const guardSelect = document.getElementById('filterGuardSelect');
+
+    // Reset downstream selections immediately
+    siteSelect.value = '';
+    guardSelect.value = '';
+
+    let url = '<?= url("/admin/attendance/ajax/filter-options") ?>';
+    if (clientId) {
+        url += '?customer_id=' + encodeURIComponent(clientId);
     }
 
-    handleFilterChange();
+    fetch(url, { headers: { 'Accept': 'application/json' } })
+        .then(res => res.json())
+        .then(response => {
+            if (response && response.success && response.data) {
+                // Update Sites
+                let siteHtml = '<option value="">All Sites</option>';
+                (response.data.sites || []).forEach(s => {
+                    siteHtml += `<option value="${s.id}">${escapeHtml(s.site_name)}</option>`;
+                });
+                siteSelect.innerHTML = siteHtml;
+
+                // Update Guards
+                let guardHtml = '<option value="">All Guards</option>';
+                (response.data.guards || []).forEach(g => {
+                    guardHtml += `<option value="${g.guard_id}">${escapeHtml(g.full_name)} (${escapeHtml(g.employee_code)})</option>`;
+                });
+                guardSelect.innerHTML = guardHtml;
+            }
+        })
+        .catch(err => console.error('Failed to update cascading filters:', err));
+}
+
+/**
+ * Cascading AJAX: Site change updates Guard options and synchronizes Client
+ */
+function onSiteChange(siteId) {
+    const clientSelect = document.getElementById('filterClientSelect');
+    const guardSelect = document.getElementById('filterGuardSelect');
+    const clientId = clientSelect.value;
+
+    // Reset guard selection immediately
+    guardSelect.value = '';
+
+    let url = '<?= url("/admin/attendance/ajax/filter-options") ?>?';
+    if (clientId) url += 'customer_id=' + encodeURIComponent(clientId) + '&';
+    if (siteId) url += 'site_id=' + encodeURIComponent(siteId);
+
+    fetch(url, { headers: { 'Accept': 'application/json' } })
+        .then(res => res.json())
+        .then(response => {
+            if (response && response.success && response.data) {
+                // If a site was picked without client, synchronize parent client automatically
+                if (response.resolved_customer_id && !clientSelect.value) {
+                    clientSelect.value = response.resolved_customer_id;
+                }
+                // If the selected site was rejected as invalid for the client, reset site selector
+                if (response.resolved_site_id === null && siteId) {
+                    siteSelect.value = '';
+                }
+
+                let guardHtml = '<option value="">All Guards</option>';
+                (response.data.guards || []).forEach(g => {
+                    guardHtml += `<option value="${g.guard_id}">${escapeHtml(g.full_name)} (${escapeHtml(g.employee_code)})</option>`;
+                });
+                guardSelect.innerHTML = guardHtml;
+            }
+        })
+        .catch(err => console.error('Failed to update guard options:', err));
 }
 
 function filterRecords() {
-    const preset = document.getElementById('datePresetSelect').value;
-    const fromDate = document.getElementById('fromDatePicker').value;
-    const toDate = document.getElementById('toDatePicker').value;
-    const statusFilter = document.getElementById('tableStatusFilter').value;
     const searchQuery = (document.getElementById('tableSearchInput').value || '').toLowerCase().trim();
 
-    // Toggle reset button visibility
-    const isFiltered = (preset !== 'all') || (statusFilter !== 'all') || (searchQuery !== '');
-    const resetBtn = document.getElementById('btnResetFilter');
-    if (resetBtn) {
-        resetBtn.style.display = isFiltered ? 'inline-flex' : 'none';
-    }
-
+    // 1. In-memory filter on table records
     filteredRecords = RAW_ATTENDANCE_RECORDS.filter(record => {
-        // 1. Search query: guard name, guard badge, site name, customer name, contract code
         if (searchQuery) {
             const guardName = (record.guard_name || '').toLowerCase();
             const guardBadge = (record.guard_badge || '').toLowerCase();
@@ -1354,37 +1477,32 @@ function filterRecords() {
 
             if (!matchesSearch) return false;
         }
-
-        // 2. Status Filter
-        if (statusFilter !== 'all') {
-            const statusInt = parseInt(statusFilter, 10);
-            if (parseInt(record.status, 10) !== statusInt) {
-                return false;
-            }
-        }
-
-        // 3. Date Preset Filter (matches check_in_at YYYY-MM-DD)
-        if (preset === 'today') {
-            if (!record.check_in_at || !record.check_in_at.startsWith(todayStr)) {
-                return false;
-            }
-        } else if (preset === 'yesterday') {
-            if (!record.check_in_at || !record.check_in_at.startsWith(yesterdayStr)) {
-                return false;
-            }
-        } else if (preset === 'specific') {
-            if (fromDate && (!record.check_in_at || !record.check_in_at.startsWith(fromDate))) {
-                return false;
-            }
-        } else if (preset === 'custom') {
-            if (!record.check_in_at) return false;
-            const recDate = record.check_in_at.substring(0, 10);
-            if (fromDate && recDate < fromDate) return false;
-            if (toDate && recDate > toDate) return false;
-        }
-
         return true;
     });
+
+    // 2. In-memory filter on Map Sites & Guard Pins
+    let activeSites = RAW_DUTY_SITES;
+    let activeGuards = RAW_GUARD_LOCATIONS;
+    if (searchQuery) {
+        activeSites = RAW_DUTY_SITES.filter(s => {
+            const name = (s.name || s.site_name || '').toLowerCase();
+            const cust = (s.customer_name || '').toLowerCase();
+            const code = (s.contract_code || s.site_code || '').toLowerCase();
+            const hasGuard = (s.guards || []).some(g => (g.name || '').toLowerCase().includes(searchQuery) || (g.badge || '').toLowerCase().includes(searchQuery));
+            return name.includes(searchQuery) || cust.includes(searchQuery) || code.includes(searchQuery) || hasGuard;
+        });
+        activeGuards = RAW_GUARD_LOCATIONS.filter(g => {
+            const name = (g.guard_name || '').toLowerCase();
+            const badge = (g.guard_badge || '').toLowerCase();
+            const site = (g.site_name || '').toLowerCase();
+            const cust = (g.customer_name || '').toLowerCase();
+            return name.includes(searchQuery) || badge.includes(searchQuery) || site.includes(searchQuery) || cust.includes(searchQuery);
+        });
+    }
+
+    renderMapMarkers(activeSites, activeGuards);
+    currentPage = 1;
+    renderAttendanceTable();
 }
 
 function renderAttendanceTable() {
@@ -1580,14 +1698,25 @@ function handleFilterChange() {
 }
 
 function resetTableFilters() {
-    document.getElementById('datePresetSelect').value = 'all';
-    document.getElementById('fromDatePicker').value = '';
-    document.getElementById('toDatePicker').value = '';
-    document.getElementById('fromDateGroup').style.display = 'none';
-    document.getElementById('toDateGroup').style.display = 'none';
-    document.getElementById('tableStatusFilter').value = 'all';
-    document.getElementById('tableSearchInput').value = '';
-    handleFilterChange();
+    window.location.href = ATTENDANCE_BASE_URL;
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '—';
+    try {
+        const parts = String(dateStr).trim().split(/[ T]/)[0].split('-');
+        if (parts.length < 3) return dateStr;
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        if (isNaN(y) || isNaN(m) || isNaN(d)) return dateStr;
+        const dayStr = String(d).padStart(2, '0');
+        const monthStr = MONTH_NAMES_SHORT[m] || '';
+        const yearStr = String(y).slice(-2);
+        return `${dayStr}-${monthStr}-${yearStr}`;
+    } catch (e) {
+        return dateStr;
+    }
 }
 
 // ==========================================================================

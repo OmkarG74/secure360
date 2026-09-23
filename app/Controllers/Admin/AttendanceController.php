@@ -17,17 +17,260 @@ use PDO;
  */
 class AttendanceController extends Controller
 {
+    /**
+     * Resolves human date preset into standard [fromDate, toDate] strings (YYYY-MM-DD)
+     */
+    public function resolveDatePreset(string $preset, ?string $rawFrom = null, ?string $rawTo = null): array
+    {
+        $today = date('Y-m-d');
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+
+        switch ($preset) {
+            case 'today':
+                return [$today, $today, 'today'];
+
+            case 'yesterday':
+                return [$yesterday, $yesterday, 'yesterday'];
+
+            case 'this_week':
+                $startOfWeek = date('Y-m-d', strtotime('monday this week'));
+                $endOfWeek = date('Y-m-d', strtotime('sunday this week'));
+                return [$startOfWeek, $endOfWeek, 'this_week'];
+
+            case 'last_month':
+                $startOfLastMonth = date('Y-m-01', strtotime('first day of last month'));
+                $endOfLastMonth = date('Y-m-t', strtotime('last day of last month'));
+                return [$startOfLastMonth, $endOfLastMonth, 'last_month'];
+
+            case 'custom':
+                $from = !empty($rawFrom) ? $rawFrom : $today;
+                $to = !empty($rawTo) ? $rawTo : $today;
+                return [$from, $to, 'custom'];
+
+            case 'this_month':
+                $startOfMonth = date('Y-m-01');
+                $endOfMonth = date('Y-m-t');
+                return [$startOfMonth, $endOfMonth, 'this_month'];
+
+            case 'all':
+            default:
+                return [null, null, 'all'];
+        }
+    }
+
+    /**
+     * Validates and sanitizes Client -> Site -> Guard cascading filter relationships
+     */
+    public function validateFilterRelationships(int $orgId, ?int &$customerId, ?int &$siteId, ?int &$guardId): void
+    {
+        $db = Database::getConnection();
+
+        // 1. Validate Customer
+        if ($customerId !== null) {
+            $stmtC = $db->prepare("SELECT id FROM customers WHERE id = :id AND organization_id = :org_id AND deleted_at IS NULL");
+            $stmtC->execute(['id' => $customerId, 'org_id' => $orgId]);
+            if (!$stmtC->fetchColumn()) {
+                $customerId = null;
+            }
+        }
+
+        // 2. Validate Site
+        if ($siteId !== null) {
+            $stmtS = $db->prepare("SELECT id, customer_id FROM sites WHERE id = :id AND organization_id = :org_id AND deleted_at IS NULL");
+            $stmtS->execute(['id' => $siteId, 'org_id' => $orgId]);
+            $siteRow = $stmtS->fetch(PDO::FETCH_ASSOC);
+
+            if (!$siteRow) {
+                $siteId = null;
+            } else {
+                $siteCustId = (int)$siteRow['customer_id'];
+                if ($customerId !== null && $customerId !== $siteCustId) {
+                    $siteId = null;
+                } elseif ($customerId === null) {
+                    $customerId = $siteCustId;
+                }
+            }
+        }
+
+        // 3. Validate Guard
+        if ($guardId !== null) {
+            $stmtG = $db->prepare("SELECT g.id FROM guards g JOIN users u ON g.user_id = u.id WHERE g.id = :id AND u.organization_id = :org_id AND u.deleted_at IS NULL");
+            $stmtG->execute(['id' => $guardId, 'org_id' => $orgId]);
+            if (!$stmtG->fetchColumn()) {
+                $guardId = null;
+            } else {
+                if ($siteId !== null) {
+                    $stmtA = $db->prepare("SELECT id FROM contract_guard_assignments WHERE guard_id = :guard_id AND site_id = :site_id AND deleted_at IS NULL");
+                    $stmtA->execute(['guard_id' => $guardId, 'site_id' => $siteId]);
+                    if (!$stmtA->fetchColumn()) {
+                        $guardId = null;
+                    }
+                } elseif ($customerId !== null) {
+                    $stmtA = $db->prepare("SELECT cga.id FROM contract_guard_assignments cga JOIN sites s ON cga.site_id = s.id WHERE cga.guard_id = :guard_id AND s.customer_id = :customer_id AND cga.deleted_at IS NULL");
+                    $stmtA->execute(['guard_id' => $guardId, 'customer_id' => $customerId]);
+                    if (!$stmtA->fetchColumn()) {
+                        $guardId = null;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetch cascading filter dropdown options
+     */
+    public function getFilterOptions(int $orgId, ?int $clientId = null, ?int $siteId = null): array
+    {
+        $db = Database::getConnection();
+
+        // 1. Clients
+        $stmtClients = $db->prepare(
+            "SELECT id, name, client_code FROM customers 
+             WHERE organization_id = :org_id AND deleted_at IS NULL 
+             ORDER BY name ASC"
+        );
+        $stmtClients->execute(['org_id' => $orgId]);
+        $clients = $stmtClients->fetchAll(PDO::FETCH_ASSOC);
+
+        // 2. Sites (filtered by client if selected)
+        $siteSql = "SELECT id, customer_id, site_name, site_code FROM sites 
+                    WHERE organization_id = :org_id AND deleted_at IS NULL";
+        $siteParams = ['org_id' => $orgId];
+        if (!empty($clientId)) {
+            $siteSql .= " AND customer_id = :customer_id";
+            $siteParams['customer_id'] = $clientId;
+        }
+        $siteSql .= " ORDER BY site_name ASC";
+        $stmtSites = $db->prepare($siteSql);
+        $stmtSites->execute($siteParams);
+        $sites = $stmtSites->fetchAll(PDO::FETCH_ASSOC);
+
+        // 3. Guards (filtered strictly by site or client cascading relationship)
+        $guardParams = ['org_id' => $orgId];
+        if (!empty($siteId)) {
+            $guardSql = "SELECT DISTINCT g.id as guard_id, u.full_name, u.employee_code 
+                         FROM guards g 
+                         JOIN users u ON g.user_id = u.id 
+                         JOIN contract_guard_assignments cga ON cga.guard_id = g.id AND cga.deleted_at IS NULL 
+                         WHERE u.organization_id = :org_id 
+                           AND u.deleted_at IS NULL 
+                           AND cga.site_id = :site_id";
+            $guardParams['site_id'] = $siteId;
+        } elseif (!empty($clientId)) {
+            $guardSql = "SELECT DISTINCT g.id as guard_id, u.full_name, u.employee_code 
+                         FROM guards g 
+                         JOIN users u ON g.user_id = u.id 
+                         JOIN contract_guard_assignments cga ON cga.guard_id = g.id AND cga.deleted_at IS NULL 
+                         JOIN sites s ON cga.site_id = s.id AND s.deleted_at IS NULL 
+                         WHERE u.organization_id = :org_id 
+                           AND u.deleted_at IS NULL 
+                           AND s.customer_id = :customer_id";
+            $guardParams['customer_id'] = $clientId;
+        } else {
+            $guardSql = "SELECT DISTINCT g.id as guard_id, u.full_name, u.employee_code 
+                         FROM guards g 
+                         JOIN users u ON g.user_id = u.id 
+                         WHERE u.organization_id = :org_id 
+                           AND u.deleted_at IS NULL";
+        }
+        $guardSql .= " ORDER BY u.full_name ASC";
+        $stmtGuards = $db->prepare($guardSql);
+        $stmtGuards->execute($guardParams);
+        $guards = $stmtGuards->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            'clients' => $clients,
+            'sites' => $sites,
+            'guards' => $guards,
+        ];
+    }
+
+    /**
+     * AJAX endpoint for cascading filter dropdowns
+     */
+    public function ajaxFilterOptions(?Request $request = null, ?Response $response = null): void
+    {
+        $orgId = Auth::organisationId() ?? 1;
+        $customerId = $this->request->query('customer_id') ? (int)$this->request->query('customer_id') : null;
+        $siteId = $this->request->query('site_id') ? (int)$this->request->query('site_id') : null;
+        $dummyGuard = null;
+
+        $this->validateFilterRelationships($orgId, $customerId, $siteId, $dummyGuard);
+        $options = $this->getFilterOptions($orgId, $customerId, $siteId);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'data' => $options,
+            'resolved_customer_id' => $customerId,
+            'resolved_site_id' => $siteId,
+        ]);
+        exit;
+    }
+
     public function index(): void
     {
         $orgId = Auth::organisationId() ?? 1;
         $db = Database::getConnection();
 
-        // 1. Fetch complete attendance records with joined relations (ONLY_FULL_GROUP_BY compatible)
+        // 1. Extract filter parameters
+        $preset = (string)$this->request->query('preset', 'all');
+        $rawFrom = $this->request->query('from_date');
+        $rawTo = $this->request->query('to_date');
+        $customerId = $this->request->query('customer_id') ? (int)$this->request->query('customer_id') : null;
+        $siteId = $this->request->query('site_id') ? (int)$this->request->query('site_id') : null;
+        $guardId = $this->request->query('guard_id') ? (int)$this->request->query('guard_id') : null;
+        $status = (string)$this->request->query('status', 'all');
+        $search = trim((string)$this->request->query('search', ''));
+
+        // 2. Validate and sanitize Client -> Site -> Guard relationships
+        $this->validateFilterRelationships($orgId, $customerId, $siteId, $guardId);
+
+        // 3. Resolve date range
+        [$fromDate, $toDate, $resolvedPreset] = $this->resolveDatePreset($preset, $rawFrom, $rawTo);
+
+        // 4. Build shared attendance WHERE conditions
+        $where = ["att.organization_id = :org_id"];
+        $params = ['org_id' => $orgId];
+
+        if ($fromDate !== null && $toDate !== null) {
+            $where[] = "att.check_in_at >= :start_dt AND att.check_in_at <= :end_dt";
+            $params['start_dt'] = $fromDate . ' 00:00:00';
+            $params['end_dt'] = $toDate . ' 23:59:59';
+        }
+
+        if ($guardId !== null) {
+            $where[] = "att.guard_id = :guard_id";
+            $params['guard_id'] = $guardId;
+        }
+
+        if ($siteId !== null) {
+            $where[] = "att.site_id = :site_id";
+            $params['site_id'] = $siteId;
+        } elseif ($customerId !== null) {
+            $where[] = "s.customer_id = :customer_id";
+            $params['customer_id'] = $customerId;
+        }
+
+        if ($status !== 'all' && in_array($status, ['0', '1', '2'], true)) {
+            $where[] = "att.status = :status";
+            $params['status'] = (int)$status;
+        }
+
+        if ($search !== '') {
+            $where[] = "(u.full_name LIKE :search OR u.employee_code LIKE :search OR s.site_name LIKE :search OR cust.name LIKE :search OR c.contract_code LIKE :search)";
+            $params['search'] = '%' . $search . '%';
+        }
+
+        $whereSql = implode(' AND ', $where);
+
+        // 5. Fetch attendance records matching the exact filter conditions
         $stmtRecords = $db->prepare(
             "SELECT att.*, 
+                    DATE(att.check_in_at) as att_date,
                     u.full_name as guard_name, u.employee_code as guard_badge, u.photo_url as guard_photo,
                     s.site_name, s.site_code, s.site_address, s.latitude as site_latitude, s.longitude as site_longitude,
-                    c.contract_code, cust.name as customer_name,
+                    c.contract_code, cust.name as customer_name, cust.id as customer_id,
                     cs.shift_name, cs.start_time as shift_start, cs.end_time as shift_end
              FROM attendance att
              JOIN guards g ON att.guard_id = g.id
@@ -40,14 +283,25 @@ class AttendanceController extends Controller
              )
              LEFT JOIN contract_shifts cs ON cs.id = cga.contract_shift_id
              LEFT JOIN customers cust ON cust.id = COALESCE(s.customer_id, c.customer_id)
-             WHERE att.organization_id = :org_id
+             WHERE {$whereSql}
              ORDER BY att.check_in_at DESC
              LIMIT 500"
         );
-        $stmtRecords->execute(['org_id' => $orgId]);
+        $stmtRecords->execute($params);
         $records = $stmtRecords->fetchAll(PDO::FETCH_ASSOC);
 
-        // 2. Fetch duty sites and assigned guards for the Map
+        // 6. Fetch duty sites matching the current filter scope for the Map
+        $siteWhere = ["s.organization_id = :org_id AND s.deleted_at IS NULL"];
+        $siteParams = ['org_id' => $orgId];
+        if ($siteId !== null) {
+            $siteWhere[] = "s.id = :site_id";
+            $siteParams['site_id'] = $siteId;
+        } elseif ($customerId !== null) {
+            $siteWhere[] = "s.customer_id = :customer_id";
+            $siteParams['customer_id'] = $customerId;
+        }
+        $siteWhereSql = implode(' AND ', $siteWhere);
+
         $stmtSites = $db->prepare(
             "SELECT s.id as site_id, s.site_name, s.site_code, s.site_address, s.latitude, s.longitude,
                     cust.name as customer_name, cust.client_code,
@@ -61,10 +315,10 @@ class AttendanceController extends Controller
              LEFT JOIN guards g ON cga.guard_id = g.id AND g.deleted_at IS NULL
              LEFT JOIN users u ON g.user_id = u.id AND u.deleted_at IS NULL
              LEFT JOIN contract_shifts cs ON cga.contract_shift_id = cs.id AND cs.deleted_at IS NULL
-             WHERE s.organization_id = :org_id AND s.deleted_at IS NULL
+             WHERE {$siteWhereSql}
              ORDER BY s.site_name ASC"
         );
-        $stmtSites->execute(['org_id' => $orgId]);
+        $stmtSites->execute($siteParams);
         $siteRows = $stmtSites->fetchAll(PDO::FETCH_ASSOC);
 
         $dutySites = [];
@@ -97,95 +351,187 @@ class AttendanceController extends Controller
                 }
             }
         }
-        foreach ($dutySites as &$site) {
-            $site['guards'] = array_values($site['guards']);
+        foreach ($dutySites as &$siteItem) {
+            $siteItem['guards'] = array_values($siteItem['guards']);
         }
         $dutySites = array_values($dutySites);
 
-        // 3. Fetch guard latest GPS/live location telemetry for the Map
-        $stmtLive = $db->prepare(
-            "SELECT gll.id, gll.guard_id, gll.latitude, gll.longitude, gll.accuracy_meters, gll.address, gll.recorded_at,
-                    u.full_name as guard_name, u.employee_code as guard_badge,
-                    s.site_name, s.site_code,
-                    att.status as attendance_status, att.check_in_at, att.check_out_at
-             FROM (
-                 SELECT MAX(id) as max_id
-                 FROM guard_live_locations
-                 WHERE organization_id = :org_id
-                 GROUP BY guard_id
-             ) latest
-             JOIN guard_live_locations gll ON gll.id = latest.max_id
-             JOIN guards g ON gll.guard_id = g.id
-             JOIN users u ON g.user_id = u.id
-             LEFT JOIN attendance att ON gll.attendance_id = att.id
-             LEFT JOIN sites s ON att.site_id = s.id"
-        );
-        $stmtLive->execute(['org_id' => $orgId]);
-        $liveRows = $stmtLive->fetchAll(PDO::FETCH_ASSOC);
-
-        $stmtAttLoc = $db->prepare(
-            "SELECT att.id as attendance_id, att.guard_id, 
-                    att.check_in_latitude as latitude, att.check_in_longitude as longitude, 
-                    att.check_in_address as address, att.check_in_at as recorded_at,
-                    att.status as attendance_status, att.check_in_at, att.check_out_at,
-                    u.full_name as guard_name, u.employee_code as guard_badge,
-                    s.site_name, s.site_code
-             FROM (
-                 SELECT MAX(id) as max_id
-                 FROM attendance
-                 WHERE organization_id = :org_id
-                   AND check_in_latitude IS NOT NULL 
-                   AND check_in_longitude IS NOT NULL
-                 GROUP BY guard_id
-             ) latest
-             JOIN attendance att ON att.id = latest.max_id
-             JOIN guards g ON att.guard_id = g.id
-             JOIN users u ON g.user_id = u.id
-             LEFT JOIN sites s ON att.site_id = s.id"
-        );
-        $stmtAttLoc->execute(['org_id' => $orgId]);
-        $attLocRows = $stmtAttLoc->fetchAll(PDO::FETCH_ASSOC);
-
+        // 7. Compute Historical Guard Locations for each relevant guard for each selected calendar day
+        // Priority 1: Telemetry in guard_live_locations linked to the duty session
+        // Priority 2: Attendance checkout GPS
+        // Priority 3: Attendance check-in GPS
         $guardLocations = [];
-        $recordedGuardIds = [];
 
-        foreach ($liveRows as $row) {
-            $gId = (int)$row['guard_id'];
-            $guardLocations[] = [
-                'guard_id' => $gId,
-                'guard_name' => $row['guard_name'],
-                'guard_badge' => $row['guard_badge'],
-                'site_name' => $row['site_name'] ?? 'Unassigned Site',
-                'status' => (int)($row['attendance_status'] ?? 0),
-                'status_label' => ((int)($row['attendance_status'] ?? 0) === 0) ? 'On Duty' : (((int)($row['attendance_status'] ?? 0) === 1) ? 'Completed' : 'Cancelled'),
-                'latitude' => (float)$row['latitude'],
-                'longitude' => (float)$row['longitude'],
-                'accuracy' => $row['accuracy_meters'] ? (float)$row['accuracy_meters'] : null,
-                'address' => $row['address'] ?? null,
-                'last_update' => $row['recorded_at'],
-            ];
-            $recordedGuardIds[$gId] = true;
-        }
+        if (!empty($records)) {
+            $attIds = array_column($records, 'id');
+            $attIdPlaceholders = implode(',', array_fill(0, count($attIds), '?'));
 
-        foreach ($attLocRows as $row) {
-            $gId = (int)$row['guard_id'];
-            if (!isset($recordedGuardIds[$gId])) {
-                $guardLocations[] = [
-                    'guard_id' => $gId,
-                    'guard_name' => $row['guard_name'],
-                    'guard_badge' => $row['guard_badge'],
-                    'site_name' => $row['site_name'] ?? 'Unassigned Site',
-                    'status' => (int)$row['attendance_status'],
-                    'status_label' => ((int)$row['attendance_status'] === 0) ? 'On Duty' : (((int)$row['attendance_status'] === 1) ? 'Completed' : 'Cancelled'),
-                    'latitude' => (float)$row['latitude'],
-                    'longitude' => (float)$row['longitude'],
-                    'accuracy' => null,
-                    'address' => $row['address'] ?? null,
-                    'last_update' => $row['recorded_at'],
-                ];
-                $recordedGuardIds[$gId] = true;
+            // Fetch all telemetry rows linked to these attendance sessions
+            $stmtTelemetry = $db->prepare(
+                "SELECT gll.id, gll.guard_id, gll.attendance_id, gll.latitude, gll.longitude,
+                        gll.accuracy_meters, gll.address, gll.recorded_at,
+                        DATE(gll.recorded_at) as rec_date
+                 FROM guard_live_locations gll
+                 WHERE gll.attendance_id IN ({$attIdPlaceholders})
+                 ORDER BY gll.recorded_at ASC"
+            );
+            $stmtTelemetry->execute($attIds);
+            $telemetryRows = $stmtTelemetry->fetchAll(PDO::FETCH_ASSOC);
+
+            // Group latest telemetry by [guard_id][rec_date]
+            $latestTelemetryByGuardDate = [];
+            foreach ($telemetryRows as $tRow) {
+                $gId = (int)$tRow['guard_id'];
+                $d = $tRow['rec_date'];
+                $latestTelemetryByGuardDate[$gId][$d] = $tRow; // Overwrites with later timestamp because sorted ASC
+            }
+
+            // Also check telemetry submitted during the shift window if attendance_id was not explicitly set
+            $guardDateTelemetry = [];
+            $guardIds = array_unique(array_column($records, 'guard_id'));
+            if (!empty($guardIds) && $fromDate !== null && $toDate !== null) {
+                $gPlaceholders = implode(',', array_fill(0, count($guardIds), '?'));
+                $stmtShiftTel = $db->prepare(
+                    "SELECT gll.id, gll.guard_id, gll.attendance_id, gll.latitude, gll.longitude,
+                            gll.accuracy_meters, gll.address, gll.recorded_at,
+                            DATE(gll.recorded_at) as rec_date
+                     FROM guard_live_locations gll
+                     WHERE gll.guard_id IN ({$gPlaceholders})
+                       AND gll.recorded_at >= ?
+                       AND gll.recorded_at <= ?
+                     ORDER BY gll.recorded_at ASC"
+                );
+                $shiftTelParams = array_merge($guardIds, [$fromDate . ' 00:00:00', $toDate . ' 23:59:59']);
+                $stmtShiftTel->execute($shiftTelParams);
+                foreach ($stmtShiftTel->fetchAll(PDO::FETCH_ASSOC) as $stRow) {
+                    $gId = (int)$stRow['guard_id'];
+                    $d = $stRow['rec_date'];
+                    $guardDateTelemetry[$gId][$d] = $stRow;
+                }
+            }
+
+            // Group attendance records by [guard_id][att_date]
+            $sessionsByGuardDate = [];
+            foreach ($records as $att) {
+                $gId = (int)$att['guard_id'];
+                $d = (string)($att['att_date'] ?? substr($att['check_in_at'], 0, 10));
+                $sessionsByGuardDate[$gId][$d][] = $att;
+            }
+
+            // For EACH guard and EACH calendar date, determine the LAST recorded valid location
+            foreach ($sessionsByGuardDate as $gId => $dates) {
+                foreach ($dates as $date => $daySessions) {
+                    // Latest session of that date
+                    $lastSession = $daySessions[0]; // sorted DESC in $records
+
+                    $selectedLocation = null;
+
+                    // Priority 1: Telemetry in guard_live_locations linked to attendance session or matching shift date
+                    if (isset($latestTelemetryByGuardDate[$gId][$date])) {
+                        $tel = $latestTelemetryByGuardDate[$gId][$date];
+                        $selectedLocation = [
+                            'source' => 'telemetry',
+                            'guard_id' => $gId,
+                            'guard_name' => $lastSession['guard_name'],
+                            'guard_badge' => $lastSession['guard_badge'],
+                            'site_name' => $lastSession['site_name'] ?? 'Unassigned Site',
+                            'site_id' => $lastSession['site_id'] ? (int)$lastSession['site_id'] : null,
+                            'customer_id' => $lastSession['customer_id'] ? (int)$lastSession['customer_id'] : null,
+                            'customer_name' => $lastSession['customer_name'] ?? '',
+                            'location_date' => $date,
+                            'latitude' => (float)$tel['latitude'],
+                            'longitude' => (float)$tel['longitude'],
+                            'accuracy' => $tel['accuracy_meters'] ? (float)$tel['accuracy_meters'] : null,
+                            'address' => $tel['address'] ?: ($lastSession['site_name'] ?? null),
+                            'last_update' => $tel['recorded_at'],
+                            'status' => (int)$lastSession['status'],
+                            'status_label' => ((int)$lastSession['status'] === 0) ? 'On Duty' : (((int)$lastSession['status'] === 1) ? 'Completed' : 'Cancelled'),
+                        ];
+                    } elseif (isset($guardDateTelemetry[$gId][$date])) {
+                        $tel = $guardDateTelemetry[$gId][$date];
+                        $selectedLocation = [
+                            'source' => 'telemetry',
+                            'guard_id' => $gId,
+                            'guard_name' => $lastSession['guard_name'],
+                            'guard_badge' => $lastSession['guard_badge'],
+                            'site_name' => $lastSession['site_name'] ?? 'Unassigned Site',
+                            'site_id' => $lastSession['site_id'] ? (int)$lastSession['site_id'] : null,
+                            'customer_id' => $lastSession['customer_id'] ? (int)$lastSession['customer_id'] : null,
+                            'customer_name' => $lastSession['customer_name'] ?? '',
+                            'location_date' => $date,
+                            'latitude' => (float)$tel['latitude'],
+                            'longitude' => (float)$tel['longitude'],
+                            'accuracy' => $tel['accuracy_meters'] ? (float)$tel['accuracy_meters'] : null,
+                            'address' => $tel['address'] ?: ($lastSession['site_name'] ?? null),
+                            'last_update' => $tel['recorded_at'],
+                            'status' => (int)$lastSession['status'],
+                            'status_label' => ((int)$lastSession['status'] === 0) ? 'On Duty' : (((int)$lastSession['status'] === 1) ? 'Completed' : 'Cancelled'),
+                        ];
+                    }
+
+                    // Priority 2: Attendance checkout GPS from the latest session of that day
+                    if (!$selectedLocation) {
+                        foreach ($daySessions as $s) {
+                            if ($s['check_out_latitude'] !== null && $s['check_out_longitude'] !== null) {
+                                $selectedLocation = [
+                                    'source' => 'attendance_checkout',
+                                    'guard_id' => $gId,
+                                    'guard_name' => $s['guard_name'],
+                                    'guard_badge' => $s['guard_badge'],
+                                    'site_name' => $s['site_name'] ?? 'Unassigned Site',
+                                    'site_id' => $s['site_id'] ? (int)$s['site_id'] : null,
+                                    'customer_id' => $s['customer_id'] ? (int)$s['customer_id'] : null,
+                                    'customer_name' => $s['customer_name'] ?? '',
+                                    'location_date' => $date,
+                                    'latitude' => (float)$s['check_out_latitude'],
+                                    'longitude' => (float)$s['check_out_longitude'],
+                                    'accuracy' => null,
+                                    'address' => $s['check_out_address'] ?: ($s['site_name'] ?? null),
+                                    'last_update' => $s['check_out_at'] ?: $s['check_in_at'],
+                                    'status' => (int)$s['status'],
+                                    'status_label' => ((int)$s['status'] === 0) ? 'On Duty' : (((int)$s['status'] === 1) ? 'Completed' : 'Cancelled'),
+                                ];
+                                break;
+                            }
+                        }
+                    }
+
+                    // Priority 3: Attendance check-in GPS from the latest session of that day
+                    if (!$selectedLocation) {
+                        foreach ($daySessions as $s) {
+                            if ($s['check_in_latitude'] !== null && $s['check_in_longitude'] !== null) {
+                                $selectedLocation = [
+                                    'source' => 'attendance_checkin',
+                                    'guard_id' => $gId,
+                                    'guard_name' => $s['guard_name'],
+                                    'guard_badge' => $s['guard_badge'],
+                                    'site_name' => $s['site_name'] ?? 'Unassigned Site',
+                                    'site_id' => $s['site_id'] ? (int)$s['site_id'] : null,
+                                    'customer_id' => $s['customer_id'] ? (int)$s['customer_id'] : null,
+                                    'customer_name' => $s['customer_name'] ?? '',
+                                    'location_date' => $date,
+                                    'latitude' => (float)$s['check_in_latitude'],
+                                    'longitude' => (float)$s['check_in_longitude'],
+                                    'accuracy' => null,
+                                    'address' => $s['check_in_address'] ?: ($s['site_name'] ?? null),
+                                    'last_update' => $s['check_in_at'],
+                                    'status' => (int)$s['status'],
+                                    'status_label' => ((int)$s['status'] === 0) ? 'On Duty' : (((int)$s['status'] === 1) ? 'Completed' : 'Cancelled'),
+                                ];
+                                break;
+                            }
+                        }
+                    }
+
+                    if ($selectedLocation) {
+                        $guardLocations[] = $selectedLocation;
+                    }
+                }
             }
         }
+
+        // 8. Fetch cascading filter options for view
+        $filterOptions = $this->getFilterOptions($orgId, $customerId, $siteId);
 
         $this->render('admin/attendance/index', [
             'pageTitle' => 'Guard Attendance & Duty Telemetry',
@@ -193,6 +539,15 @@ class AttendanceController extends Controller
             'records' => $records,
             'dutySites' => $dutySites,
             'guardLocations' => $guardLocations,
+            'filterOptions' => $filterOptions,
+            'preset' => $resolvedPreset,
+            'fromDate' => $fromDate,
+            'toDate' => $toDate,
+            'customerId' => $customerId,
+            'siteId' => $siteId,
+            'guardId' => $guardId,
+            'status' => $status,
+            'search' => $search,
         ], 'layouts/admin');
     }
 
