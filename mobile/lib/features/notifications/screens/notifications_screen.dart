@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/services/wake_up_manager.dart';
 import '../../../core/utils/time_formatter.dart';
 
 /// Guard Mobile Notifications Screen
@@ -69,15 +70,55 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _onNotificationTap(Map<String, dynamic> item) async {
-    final notifId = item['id'];
+    final rawId = item['id'];
+    final notifId = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '0') ?? 0;
     final isRead = item['is_read'] == 1 || item['is_read'] == true;
 
+    final type = (item['type'] ?? '').toString().toLowerCase();
+    final isWakeUp = (type == 'wake_up' || type == 'wake_up_call' || type.contains('wakeup'));
+
+    // Check if this wake-up call is already acknowledged
+    if (isWakeUp && notifId > 0) {
+      final isAckLocally = WakeUpManager.isAcknowledged(notifId);
+      final isAckInItem = item['acknowledged'] == true ||
+          item['acknowledged_at'] != null ||
+          (item['data_json'] is Map &&
+              (item['data_json']['acknowledged'] == true || item['data_json']['acknowledged_at'] != null));
+
+      if (isAckLocally || isAckInItem) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This wake-up call has already been acknowledged.'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      // Check authoritative status from backend
+      final statusRes = await ApiService.getNotificationStatus(notifId);
+      if (statusRes.success && statusRes.data != null && statusRes.data!['acknowledged'] == true) {
+        WakeUpManager.acknowledge(notifId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This wake-up call has already been acknowledged.'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+    }
+
     // Optimistically mark as read locally
-    if (!isRead && notifId != null) {
+    if (!isRead && notifId > 0) {
       setState(() {
         item['is_read'] = 1;
       });
-      ApiService.markNotificationRead(notifId is int ? notifId : int.tryParse(notifId.toString()) ?? 0);
+      ApiService.markNotificationRead(notifId);
     }
 
     // Build payload for routing
@@ -85,6 +126,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       'type': item['type'] ?? '',
       'screen': item['entity_type'] ?? item['type'] ?? '',
       'entity_id': item['entity_id']?.toString() ?? '',
+      'notification_id': notifId.toString(),
     };
 
     if (item['data_json'] != null) {

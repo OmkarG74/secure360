@@ -81,6 +81,7 @@ $router->group([
     $router->get('/notifications/manage', [NotificationController::class, 'manage']);
     $router->get('/notifications/create', [NotificationController::class, 'createAlertForm']);
     $router->post('/notifications/create', [NotificationController::class, 'sendAlert']);
+    $router->post('/notifications/wake-up', [NotificationController::class, 'sendWakeUpCall']);
     $router->post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
     $router->post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
 

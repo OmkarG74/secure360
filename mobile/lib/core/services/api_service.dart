@@ -873,4 +873,65 @@ class ApiService {
       );
     }
   }
+
+  /// Acknowledge a high-priority notification (e.g. Wake-Up Call)
+  static Future<ApiResponse<Map<String, dynamic>>> acknowledgeNotification(int notificationId) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/guard/notifications/$notificationId/acknowledge');
+      final headers = await _buildHeaders();
+      debugPrint('[WakeUp] Sending acknowledgement API');
+      final response = await http
+          .post(url, headers: headers)
+          .timeout(ApiConfig.connectTimeout);
+
+      debugPrint('[WakeUp] API status=${response.statusCode}');
+
+      final parsed = _parseResponse<Map<String, dynamic>>(
+        response,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{},
+      );
+
+      if (parsed.success) {
+        debugPrint('[WakeUp] Acknowledgement API successful');
+        final isAck = parsed.data?['acknowledged'] == true;
+        debugPrint('[WakeUp] Backend acknowledged=$isAck');
+        debugPrint('[WakeUp] Wake-Up flow completed');
+      } else {
+        debugPrint('[WakeUp] Acknowledgement API failed: ${parsed.message}');
+      }
+
+      return parsed;
+    } catch (e) {
+      debugPrint('[WakeUp] Acknowledgement API failed: $e');
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: 'Failed to acknowledge notification: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Retrieve status of a specific notification
+  static Future<ApiResponse<Map<String, dynamic>>> getNotificationStatus(int notificationId) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/guard/notifications/$notificationId/status');
+      final headers = await _buildHeaders();
+      final response = await http
+          .get(url, headers: headers)
+          .timeout(ApiConfig.connectTimeout);
+
+      return _parseResponse<Map<String, dynamic>>(
+        response,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{},
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: 'Failed to fetch notification status: $e',
+        statusCode: 500,
+      );
+    }
+  }
 }
+
+

@@ -132,4 +132,51 @@ class AdminNotificationApiController extends Controller
             'status_code' => 200,
         ]);
     }
+
+    /**
+     * Dispatch an immediate Wake-Up Call to a specific Guard
+     * POST /api/v1/admin/notifications/wake-up
+     */
+    public function wakeUp(): void
+    {
+        $user = $GLOBALS['AUTH_USER'] ?? null;
+        if (!$user) {
+            $this->json(['success' => false, 'message' => 'Unauthorized', 'status_code' => 401], 401);
+            return;
+        }
+
+        $body = $this->request->getBody();
+        $guardId = isset($body['guard_id']) ? (int)$body['guard_id'] : 0;
+
+        if ($guardId <= 0) {
+            $this->json([
+                'success' => false,
+                'message' => 'A valid guard_id is required',
+                'status_code' => 422,
+            ], 422);
+            return;
+        }
+
+        $orgId = (int)($user['organization_id'] ?? 1);
+        $adminUserId = (int)$user['id'];
+
+        $res = NotificationService::sendWakeUpCall($guardId, $adminUserId, $orgId);
+
+        if (!$res['success']) {
+            $this->json([
+                'success' => false,
+                'message' => $res['message'],
+                'data' => null,
+                'status_code' => 404,
+            ], 404);
+            return;
+        }
+
+        $this->json([
+            'success' => true,
+            'message' => $res['message'],
+            'data' => $res,
+            'status_code' => 200,
+        ], 200);
+    }
 }

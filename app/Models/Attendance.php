@@ -15,6 +15,54 @@ class Attendance extends Model
 {
     protected string $table = 'attendance';
 
+    public function __construct()
+    {
+        parent::__construct();
+        $this->ensureColumnsExist();
+    }
+
+    /**
+     * Resilient column check ensuring migration columns exist
+     */
+    private function ensureColumnsExist(): void
+    {
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+
+        try {
+            $stmt = $this->db->query("SHOW COLUMNS FROM `{$this->table}` LIKE 'is_outside_post'");
+            if (!$stmt->fetch()) {
+                if (!$this->db->inTransaction()) {
+                    $this->db->exec(
+                        "ALTER TABLE `{$this->table}`
+                          ADD COLUMN IF NOT EXISTS `is_outside_post` tinyint NOT NULL DEFAULT 0 AFTER `status`"
+                    );
+                }
+            }
+            $checked = true;
+        } catch (\Throwable) {
+            // Ignore if constrained or already executed
+        }
+    }
+
+    /**
+     * Update guard post departure state for an active attendance session
+     */
+    public function setOutsidePostState(int $attendanceId, bool $isOutside): bool
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE {$this->table} 
+             SET is_outside_post = :outside, updated_at = NOW() 
+             WHERE id = :id AND status = 0"
+        );
+        return $stmt->execute([
+            'outside' => $isOutside ? 1 : 0,
+            'id' => $attendanceId,
+        ]);
+    }
+
     /**
      * Retrieve attendance records for an organization with guard and site details
      */
@@ -43,6 +91,7 @@ class Attendance extends Model
     {
         $sql = "SELECT att.*, 
                        s.site_name, s.site_code, s.site_address, s.latitude as site_latitude, s.longitude as site_longitude,
+                       s.zone_gate,
                        cs.shift_name, cs.start_time, cs.end_time
                 FROM {$this->table} att
                 LEFT JOIN sites s ON att.site_id = s.id
@@ -77,6 +126,7 @@ class Attendance extends Model
         $stmt = $this->db->prepare(
             "SELECT att.*, 
                     s.site_name, s.site_code, s.site_address, s.latitude as site_latitude, s.longitude as site_longitude,
+                    s.zone_gate,
                     cs.shift_name, cs.start_time, cs.end_time
              FROM {$this->table} att
              LEFT JOIN sites s ON att.site_id = s.id

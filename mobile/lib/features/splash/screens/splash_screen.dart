@@ -60,15 +60,24 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const HomeDashboardScreen()),
       );
+
+      // If app was launched from terminated state via notification, route immediately
+      if (NotificationService.hasPendingInitialPayload) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          NotificationService.handlePendingInitialRoute();
+        });
+      }
     } else {
       // Session invalid or expired (handled by global 401, but ensure clean state)
       await ApiService.clearAuthSession();
+      NotificationService.clearPendingInitialPayload();
       _navigateToLogin();
     }
   }
 
   void _navigateToLogin() {
     if (!mounted) return;
+    NotificationService.clearPendingInitialPayload();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
     );

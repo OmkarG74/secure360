@@ -54,6 +54,8 @@ $router->group([
         // Notifications & Device Registration
         $router->get('/guard/notifications', [\App\Controllers\Api\Guard\GuardNotificationController::class, 'index']);
         $router->post('/guard/notifications/{id}/read', [\App\Controllers\Api\Guard\GuardNotificationController::class, 'markRead']);
+        $router->post('/guard/notifications/{id}/acknowledge', [\App\Controllers\Api\Guard\GuardNotificationController::class, 'acknowledge']);
+        $router->get('/guard/notifications/{id}/status', [\App\Controllers\Api\Guard\GuardNotificationController::class, 'status']);
         $router->post('/guard/notifications/read-all', [\App\Controllers\Api\Guard\GuardNotificationController::class, 'markAllRead']);
         $router->post('/guard/device-token', [DeviceTokenController::class, 'register']);
         $router->post('/guard/device-token/remove', [DeviceTokenController::class, 'remove']);
@@ -63,5 +65,6 @@ $router->group([
         // Admin Notification Management APIs
         $router->get('/admin/notifications', [\App\Controllers\Api\Admin\AdminNotificationApiController::class, 'index']);
         $router->post('/admin/notifications/send', [\App\Controllers\Api\Admin\AdminNotificationApiController::class, 'send']);
+        $router->post('/admin/notifications/wake-up', [\App\Controllers\Api\Admin\AdminNotificationApiController::class, 'wakeUp']);
     });
 });

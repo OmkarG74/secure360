@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Controllers\Api\Guard;
 
 use App\Core\Controller;
+use App\Core\Database;
 use App\Models\GuardLiveLocation;
 use App\Models\Notification;
 use App\Models\Selfie;
+use App\Services\NotificationService;
+use PDO;
 
 /**
  * Guard Telemetry Controller (Live Location, Selfies, Notifications)
@@ -42,14 +45,14 @@ class GuardLocationController extends Controller
 
         // Auto-link active duty session if not explicitly passed by client
         if ($attendanceId === null) {
-            $db = \App\Core\Database::getConnection();
+            $db = Database::getConnection();
             $attStmt = $db->prepare(
                 "SELECT id, assignment_id FROM attendance 
                  WHERE guard_id = :guard_id AND status = 0 AND check_out_at IS NULL 
                  ORDER BY check_in_at DESC LIMIT 1"
             );
             $attStmt->execute(['guard_id' => (int)$guard['guard_id']]);
-            $open = $attStmt->fetch(\PDO::FETCH_ASSOC);
+            $open = $attStmt->fetch(PDO::FETCH_ASSOC);
             if ($open) {
                 $attendanceId = (int)$open['id'];
                 if ($assignmentId === null && !empty($open['assignment_id'])) {
@@ -57,7 +60,6 @@ class GuardLocationController extends Controller
                 }
             }
         }
-
 
         $locationModel = new GuardLiveLocation();
         $id = $locationModel->recordLocation(
@@ -70,6 +72,109 @@ class GuardLocationController extends Controller
             $assignmentId,
             $attendanceId
         );
+
+        // -------------------------------------------------------------------------
+        // Phase 2: Post Departure / Geofence Detection & Admin Alert
+        // -------------------------------------------------------------------------
+        try {
+            $db = Database::getConnection();
+            $guardId = (int)$guard['guard_id'];
+            $orgId = (int)$guard['organization_id'];
+
+            // Fetch active open attendance session with assigned site coordinates and current departure state
+            $attStmt = $db->prepare(
+                "SELECT att.id as attendance_id, att.assignment_id, att.site_id, att.is_outside_post,
+                        s.site_name, s.zone_gate, s.latitude as site_lat, s.longitude as site_lng
+                 FROM attendance att
+                 JOIN sites s ON att.site_id = s.id
+                 WHERE att.guard_id = :guard_id 
+                   AND att.organization_id = :org_id 
+                   AND att.status = 0 
+                   AND att.check_out_at IS NULL
+                 ORDER BY att.check_in_at DESC 
+                 LIMIT 1"
+            );
+            $attStmt->execute(['guard_id' => $guardId, 'org_id' => $orgId]);
+            $activeDuty = $attStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($activeDuty && $activeDuty['site_lat'] !== null && $activeDuty['site_lng'] !== null) {
+                $siteLat = (float)$activeDuty['site_lat'];
+                $siteLng = (float)$activeDuty['site_lng'];
+                $distanceMeters = geo_distance_meters($latitude, $longitude, $siteLat, $siteLng);
+                $allowedRadius = GuardAttendanceController::DEFAULT_GEOFENCE_RADIUS_METERS; // 150m
+
+                $isOutside = ($distanceMeters > $allowedRadius);
+                $wasOutside = ((int)($activeDuty['is_outside_post'] ?? 0) === 1);
+                $activeAttId = (int)$activeDuty['attendance_id'];
+
+                if (!$wasOutside && $isOutside) {
+                    // INSIDE -> OUTSIDE: Guard has departed the assigned post
+                    // 1. Update attendance state to OUTSIDE
+                    $upStmt = $db->prepare("UPDATE attendance SET is_outside_post = 1, updated_at = NOW() WHERE id = :id");
+                    $upStmt->execute(['id' => $activeAttId]);
+
+                    // 2. Prevent duplicate notifications (e.g. rapid parallel pings within 30 seconds)
+                    $dupStmt = $db->prepare(
+                        "SELECT id FROM notifications 
+                         WHERE type = 'post_departure' 
+                           AND entity_id = :guard_id 
+                           AND created_at >= DATE_SUB(NOW(), INTERVAL 30 SECOND) 
+                         LIMIT 1"
+                    );
+                    $dupStmt->execute(['guard_id' => (string)$guardId]);
+                    if (!$dupStmt->fetchColumn()) {
+                        $guardName = (string)($guard['name'] ?? $guard['full_name'] ?? 'Guard #' . $guardId);
+                        $siteName = (string)($activeDuty['site_name'] ?? 'Assigned Site');
+                        $postName = !empty($activeDuty['zone_gate']) ? (string)$activeDuty['zone_gate'] : $siteName;
+                        $postId = (int)$activeDuty['site_id'];
+                        $eventTime = date('Y-m-d H:i:s');
+
+                        $alertTitle = 'Post Departure Alert';
+                        $alertMsg = "{$guardName} has moved outside the assigned post at {$postName}.";
+
+                        NotificationService::sendToAdmins(
+                            $orgId,
+                            $alertTitle,
+                            $alertMsg,
+                            'post_departure',
+                            [
+                                'guard_id' => $guardId,
+                                'guard_name' => $guardName,
+                                'site_id' => $postId,
+                                'site_name' => $siteName,
+                                'post_id' => $postId,
+                                'post_name' => $postName,
+                                'latitude' => $latitude,
+                                'longitude' => $longitude,
+                                'assigned_latitude' => $siteLat,
+                                'assigned_longitude' => $siteLng,
+                                'distance_from_post' => round($distanceMeters, 1),
+                                'event_time' => $eventTime,
+                                'type' => 'post_departure',
+                                'screen' => 'guard/location',
+                                'entity_id' => (string)$guardId,
+                            ],
+                            [
+                                'priority' => 'high',
+                                'entity_type' => 'guard',
+                                'entity_id' => (string)$guardId,
+                                'organization_id' => $orgId,
+                            ]
+                        );
+                    }
+                } elseif ($wasOutside && !$isOutside) {
+                    // OUTSIDE -> INSIDE: Guard has returned inside the assigned post area
+                    // Reset departure state so future departure triggers a fresh alert
+                    $upStmt = $db->prepare("UPDATE attendance SET is_outside_post = 0, updated_at = NOW() WHERE id = :id");
+                    $upStmt->execute(['id' => $activeAttId]);
+                }
+                // OUTSIDE -> OUTSIDE: Debounced, no action
+                // INSIDE -> INSIDE: Normal, no action
+            }
+        } catch (\Throwable $e) {
+            // Geofence alert failure must NEVER break telemetry logging
+            error_log("[LocationController] Post departure alert detection failed: " . $e->getMessage());
+        }
 
         $this->json([
             'success' => true,

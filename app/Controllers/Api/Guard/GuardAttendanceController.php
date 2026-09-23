@@ -7,6 +7,7 @@ namespace App\Controllers\Api\Guard;
 use App\Core\Controller;
 use App\Core\Database;
 use App\Models\Attendance;
+use App\Services\NotificationService;
 use PDO;
 
 /**
@@ -77,7 +78,7 @@ class GuardAttendanceController extends Controller
 
         $assignStmt = $db->prepare(
             "SELECT a.id as assignment_id, a.site_id, a.contract_shift_id, a.status as assignment_status,
-                    s.site_name, s.site_address, s.latitude as site_lat, s.longitude as site_lng, s.status as site_status, s.deleted_at as site_deleted_at,
+                    s.site_name, s.site_address, s.zone_gate, s.latitude as site_lat, s.longitude as site_lng, s.status as site_status, s.deleted_at as site_deleted_at,
                     cs.shift_name, cs.shift_code, cs.start_time, cs.end_time, cs.status as shift_status, cs.deleted_at as shift_deleted_at,
                     c.contract_code, c.status as contract_status, c.start_date, c.end_date, c.deleted_at as contract_deleted_at
              FROM contract_guard_assignments a
@@ -293,6 +294,54 @@ class GuardAttendanceController extends Controller
         $linkSelfie = $db->prepare("UPDATE selfies SET attendance_id = :att_id, verification_status = 'checkin' WHERE id = :selfie_id");
         $linkSelfie->execute(['att_id' => $attendanceId, 'selfie_id' => $selfieId]);
 
+        // 8. Trigger Admin Notification (Phase 2)
+        try {
+            // Duplicate prevention check: only send one notification per attendance session
+            $notifCheck = $db->prepare(
+                "SELECT id FROM notifications 
+                 WHERE type = 'attendance_checkin' AND entity_id = :att_id LIMIT 1"
+            );
+            $notifCheck->execute(['att_id' => (string)$attendanceId]);
+            if (!$notifCheck->fetchColumn()) {
+                $guardName = (string)($guard['name'] ?? $guard['full_name'] ?? 'Guard #' . $guardId);
+                $siteName = (string)($activeAssign['site_name'] ?? 'Assigned Site');
+                $postName = !empty($activeAssign['zone_gate']) ? (string)$activeAssign['zone_gate'] : 'Main Post';
+                $postId = $resolvedSiteId;
+                $checkinTime = date('Y-m-d H:i:s');
+
+                $checkinMsg = "{$guardName} checked in at {$postName}, {$siteName}.";
+
+                NotificationService::sendToAdmins(
+                    $orgId,
+                    'Guard Check-In',
+                    $checkinMsg,
+                    'attendance_checkin',
+                    [
+                        'guard_id' => $guardId,
+                        'guard_name' => $guardName,
+                        'attendance_id' => $attendanceId,
+                        'site_id' => $resolvedSiteId,
+                        'site_name' => $siteName,
+                        'post_id' => $postId,
+                        'post_name' => $postName,
+                        'event_time' => $checkinTime,
+                        'type' => 'attendance_checkin',
+                        'screen' => 'attendance/details',
+                        'entity_id' => (string)$attendanceId,
+                    ],
+                    [
+                        'priority' => 'normal',
+                        'entity_type' => 'attendance',
+                        'entity_id' => (string)$attendanceId,
+                        'organization_id' => $orgId,
+                    ]
+                );
+            }
+        } catch (\Throwable $e) {
+            // Notification failure must NEVER fail or rollback the attendance transaction
+            error_log("[Attendance] Check-in notification dispatch failed: " . $e->getMessage());
+        }
+
         $this->json([
             'success' => true,
             'message' => 'Attendance check-in recorded successfully',
@@ -329,7 +378,7 @@ class GuardAttendanceController extends Controller
 
         // 1. Locate open attendance for this authenticated guard
         $stmt = $db->prepare(
-            "SELECT att.*, s.site_name, s.latitude as site_lat, s.longitude as site_lng
+            "SELECT att.*, s.site_name, s.zone_gate, s.latitude as site_lat, s.longitude as site_lng
              FROM attendance att
              LEFT JOIN sites s ON att.site_id = s.id
              WHERE att.guard_id = :guard_id 
@@ -513,6 +562,55 @@ class GuardAttendanceController extends Controller
             'selfie_id' => $checkoutSelfieId,
             'guard_id' => $guardId,
         ]);
+
+        // 6. Trigger Admin Notification (Phase 2)
+        try {
+            // Duplicate prevention check: only send one checkout notification per attendance session
+            $notifCheck = $db->prepare(
+                "SELECT id FROM notifications 
+                 WHERE type = 'attendance_checkout' AND entity_id = :att_id LIMIT 1"
+            );
+            $notifCheck->execute(['att_id' => (string)$attendanceId]);
+            if (!$notifCheck->fetchColumn()) {
+                $guardName = (string)($guard['name'] ?? $guard['full_name'] ?? 'Guard #' . $guardId);
+                $siteName = (string)($openAttendance['site_name'] ?? 'Assigned Site');
+                $postName = !empty($openAttendance['zone_gate']) ? (string)$openAttendance['zone_gate'] : 'Main Post';
+                $postId = !empty($openAttendance['site_id']) ? (int)$openAttendance['site_id'] : null;
+                $checkoutTime = date('Y-m-d H:i:s');
+
+                $checkoutMsg = "{$guardName} checked out from {$postName}, {$siteName}.";
+
+                NotificationService::sendToAdmins(
+                    $orgId,
+                    'Guard Check-Out',
+                    $checkoutMsg,
+                    'attendance_checkout',
+                    [
+                        'guard_id' => $guardId,
+                        'guard_name' => $guardName,
+                        'attendance_id' => $attendanceId,
+                        'site_id' => $openAttendance['site_id'] ?? null,
+                        'site_name' => $siteName,
+                        'post_id' => $postId,
+                        'post_name' => $postName,
+                        'check_out_time' => $checkoutTime,
+                        'event_time' => $checkoutTime,
+                        'type' => 'attendance_checkout',
+                        'screen' => 'attendance/details',
+                        'entity_id' => (string)$attendanceId,
+                    ],
+                    [
+                        'priority' => 'normal',
+                        'entity_type' => 'attendance',
+                        'entity_id' => (string)$attendanceId,
+                        'organization_id' => $orgId,
+                    ]
+                );
+            }
+        } catch (\Throwable $e) {
+            // Notification failure must NEVER fail or rollback the checkout transaction
+            error_log("[Attendance] Checkout notification dispatch failed: " . $e->getMessage());
+        }
 
         $this->json([
             'success' => true,

@@ -46,10 +46,23 @@ class NotificationController extends Controller
             // Determine status accent color and destination link
             $accent = 'blue';
             $actionUrl = null;
+            $entityId = !empty($notif['entity_id']) ? (string)$notif['entity_id'] : null;
 
-            if (str_contains($type, 'checkin') || str_contains($type, 'attendance') || str_contains(strtolower($title), 'check-in') || str_contains(strtolower($title), 'checked in')) {
+            if (str_contains($type, 'checkin') || str_contains(strtolower($title), 'check-in') || str_contains(strtolower($title), 'checked in')) {
                 $accent = 'green';
+                $actionUrl = $entityId ? url('/admin/attendance/' . $entityId) : url('/admin/attendance');
+            } elseif (str_contains($type, 'checkout') || str_contains(strtolower($title), 'check-out') || str_contains(strtolower($title), 'checked out')) {
+                $accent = 'blue';
+                $actionUrl = $entityId ? url('/admin/attendance/' . $entityId) : url('/admin/attendance');
+            } elseif (str_contains($type, 'departure') || str_contains(strtolower($title), 'departure')) {
+                $accent = 'amber';
                 $actionUrl = url('/admin/attendance');
+            } elseif (str_contains($type, 'wake_up') || str_contains($type, 'wakeup')) {
+                $accent = 'red';
+                $actionUrl = url('/admin/notifications/manage?type=wake_up_call');
+            } elseif (str_contains($type, 'attendance')) {
+                $accent = 'green';
+                $actionUrl = $entityId ? url('/admin/attendance/' . $entityId) : url('/admin/attendance');
             } elseif (str_contains($type, 'guard') || str_contains($type, 'assign') || str_contains(strtolower($title), 'guard')) {
                 $accent = 'blue';
                 $actionUrl = url('/admin/guards');
@@ -264,6 +277,54 @@ class NotificationController extends Controller
             $this->setFlash('error', 'An error occurred while dispatching the alert: ' . $e->getMessage());
             $this->redirect('/admin/notifications/create');
         }
+    }
+
+    /**
+     * Dispatch Wake-Up Call to Guard from Web Admin
+     * POST /admin/notifications/wake-up
+     */
+    public function sendWakeUpCall(Request $request = null, Response $response = null): void
+    {
+        $adminId = Auth::id() ?? 0;
+        $orgId = Auth::organisationId() ?? 1;
+
+        $guardId = (int)$this->request->input('guard_id');
+        $accept = (string)($this->request->getHeader('accept') ?? '');
+        $isAjax = $this->request->isAjax() || str_contains($accept, 'application/json');
+
+        if ($guardId <= 0) {
+            if ($isAjax) {
+                $this->json(['success' => false, 'message' => 'Please select a valid guard.'], 422);
+                return;
+            }
+            $this->setFlash('error', 'Please select a valid guard.');
+            $this->redirect('/admin/notifications/manage');
+            return;
+        }
+
+        $res = NotificationService::sendWakeUpCall($guardId, $adminId, $orgId);
+
+        if (!$res['success']) {
+            if ($isAjax) {
+                $this->json(['success' => false, 'message' => $res['message']], 404);
+                return;
+            }
+            $this->setFlash('error', $res['message']);
+            $this->redirect('/admin/notifications/manage');
+            return;
+        }
+
+        if ($isAjax) {
+            $this->json([
+                'success' => true,
+                'message' => $res['message'],
+                'data' => $res,
+            ]);
+            return;
+        }
+
+        $this->setFlash('success', $res['message']);
+        $this->redirect('/admin/notifications/manage');
     }
 
     /**

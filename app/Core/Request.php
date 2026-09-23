@@ -233,4 +233,22 @@ class Request
         $contentType = $this->getHeader('content-type') ?? '';
         return str_contains($contentType, 'application/json');
     }
+
+    /**
+     * Check if request was sent via XMLHttpRequest / AJAX
+     */
+    public function isAjax(): bool
+    {
+        $requestedWith = $this->getHeader('x-requested-with') ?? '';
+        return strtolower($requestedWith) === 'xmlhttprequest';
+    }
+
+    /**
+     * Alias for getHeader()
+     */
+    public function header(string $name, ?string $default = null): ?string
+    {
+        return $this->getHeader($name, $default);
+    }
 }
+
