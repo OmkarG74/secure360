@@ -372,9 +372,113 @@ class Notification extends Model
         if (str_contains($type, 'attendance') || str_contains($type, 'checkin') || str_contains($type, 'checkout')) {
             return 'attendance';
         }
+        if (str_contains($type, 'departure')) {
+            return 'guard/location';
+        }
+        if (str_contains($type, 'wake_up') || str_contains($type, 'wakeup')) {
+            return 'wake_up';
+        }
         if (str_contains($type, 'sos') || str_contains($type, 'emergency') || str_contains($type, 'alert')) {
             return 'notifications';
         }
         return 'notifications';
+    }
+
+    /**
+     * Determine whether a notification has been acknowledged.
+     * Checks data_json (acknowledged flag / acknowledged_at) and read status.
+     */
+    public static function isAcknowledged(int $notificationId): bool
+    {
+        if ($notificationId <= 0) {
+            return false;
+        }
+
+        $db = \App\Core\Database::getConnection();
+        $stmt = $db->prepare(
+            "SELECT type, data_json, is_read, read_at FROM notifications WHERE id = :id LIMIT 1"
+        );
+        $stmt->execute(['id' => $notificationId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return false;
+        }
+
+        return self::checkRowAcknowledged($row);
+    }
+
+    /**
+     * Static helper to check acknowledgement status of a database row or by ID.
+     * Strictly verifies persisted data_json acknowledgement; does NOT conflate with is_read.
+     */
+    public static function checkRowAcknowledged(array $row): bool
+    {
+        $data = [];
+        if (!empty($row['data_json'])) {
+            $parsed = is_string($row['data_json']) ? json_decode($row['data_json'], true) : $row['data_json'];
+            if (is_string($parsed)) {
+                $parsed = json_decode($parsed, true);
+            }
+            if (is_array($parsed)) {
+                $data = $parsed;
+            }
+        }
+
+        if (!empty($data['acknowledged']) && ($data['acknowledged'] === true || $data['acknowledged'] === 1 || $data['acknowledged'] === 'true') && !empty($data['acknowledged_at'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Retrieve authoritative acknowledgement details
+     * @return array{acknowledged: bool, acknowledged_at: ?string, acknowledged_by_guard_id: ?int}
+     */
+    public function getAcknowledgementStatus(int $notificationId): array
+    {
+        if ($notificationId <= 0) {
+            return [
+                'acknowledged' => false,
+                'acknowledged_at' => null,
+                'acknowledged_by_guard_id' => null,
+            ];
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT type, data_json, is_read, read_at FROM {$this->table} WHERE id = :id LIMIT 1"
+        );
+        $stmt->execute(['id' => $notificationId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return [
+                'acknowledged' => false,
+                'acknowledged_at' => null,
+                'acknowledged_by_guard_id' => null,
+            ];
+        }
+
+        $data = [];
+        if (!empty($row['data_json'])) {
+            $parsed = is_string($row['data_json']) ? json_decode($row['data_json'], true) : $row['data_json'];
+            if (is_string($parsed)) {
+                $parsed = json_decode($parsed, true);
+            }
+            if (is_array($parsed)) {
+                $data = $parsed;
+            }
+        }
+
+        $isAck = self::checkRowAcknowledged($row);
+        $ackAt = $isAck ? ($data['acknowledged_at'] ?? null) : null;
+        $guardId = isset($data['acknowledged_by_guard_id']) ? (int)$data['acknowledged_by_guard_id'] : null;
+
+        return [
+            'acknowledged' => $isAck,
+            'acknowledged_at' => $ackAt,
+            'acknowledged_by_guard_id' => $guardId,
+        ];
     }
 }

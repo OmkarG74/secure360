@@ -226,6 +226,16 @@ $isLimitReached = $sub['is_limit_reached'] ?? ($activeGuardsCount >= $guardLimit
                                 <!-- Actions -->
                                 <td style="text-align: right;">
                                     <div class="action-controls">
+                                        <?php if ((int)$g['guard_status'] === 0): ?>
+                                            <button type="button" 
+                                                    class="btn-action-edit" 
+                                                    style="color: #dc2626; border-color: #fca5a5; background: #fff5f5; display: inline-flex; align-items: center; gap: 0.25rem;"
+                                                    title="Dispatch urgent Wake-Up Call"
+                                                    onclick="triggerWakeUp(<?= (int)$g['guard_id'] ?>, '<?= e(addslashes($g['full_name'])) ?>')">
+                                                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                                Wake Up
+                                            </button>
+                                        <?php endif; ?>
                                         <a href="<?= url('/admin/guards/' . $g['guard_id'] . '/edit') ?>" class="btn-action-edit">
                                             Edit
                                         </a>
@@ -256,3 +266,17 @@ $isLimitReached = $sub['is_limit_reached'] ?? ($activeGuardsCount >= $guardLimit
         <?php endif; ?>
     </div>
 </div>
+
+<form id="wakeUpQuickForm" method="POST" action="<?= url('/admin/notifications/wake-up') ?>" style="display:none;">
+    <?= csrf_field() ?>
+    <input type="hidden" name="guard_id" id="quickWakeUpGuardId" value="">
+</form>
+
+<script>
+function triggerWakeUp(guardId, guardName) {
+    if (confirm(`Send an immediate high-priority Wake-Up Call to ${guardName}?\n\nThis will sound a continuous wake-up alarm on their device until acknowledged.`)) {
+        document.getElementById('quickWakeUpGuardId').value = guardId;
+        document.getElementById('wakeUpQuickForm').submit();
+    }
+}
+</script>

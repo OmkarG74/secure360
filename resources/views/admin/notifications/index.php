@@ -43,6 +43,10 @@ $searchQuery = $filters['search'] ?? '';
                 <!-- Type Filter -->
                 <select name="type" class="form-select" style="width: auto; min-width: 130px; height: 42px; font-size: 0.8125rem;" onchange="this.form.submit()">
                     <option value="">All Types</option>
+                    <option value="wake_up_call" <?= $typeFilter === 'wake_up_call' ? 'selected' : '' ?>>Wake-Up Call</option>
+                    <option value="attendance_checkin" <?= $typeFilter === 'attendance_checkin' ? 'selected' : '' ?>>Guard Check-In</option>
+                    <option value="attendance_checkout" <?= $typeFilter === 'attendance_checkout' ? 'selected' : '' ?>>Guard Check-Out</option>
+                    <option value="post_departure" <?= $typeFilter === 'post_departure' ? 'selected' : '' ?>>Post Departure</option>
                     <option value="contract_assignment" <?= $typeFilter === 'contract_assignment' ? 'selected' : '' ?>>Contract</option>
                     <option value="shift_changed" <?= $typeFilter === 'shift_changed' ? 'selected' : '' ?>>Shift</option>
                     <option value="attendance_alert" <?= $typeFilter === 'attendance_alert' ? 'selected' : '' ?>>Attendance</option>
@@ -73,8 +77,12 @@ $searchQuery = $filters['search'] ?? '';
             </form>
         </div>
 
-        <!-- Primary Action Button: Matches Setup Guard Button -->
-        <div class="toolbar-actions">
+        <!-- Primary Action Buttons -->
+        <div class="toolbar-actions" style="display: flex; align-items: center; gap: 0.5rem;">
+            <button type="button" onclick="openWakeUpModal()" class="btn btn-outline" style="height: 42px; padding: 0 1.15rem; font-size: 0.8125rem; font-weight: 600; white-space: nowrap; cursor: pointer; display: inline-flex; align-items: center; gap: 0.45rem; color: #dc2626; border-color: #fca5a5; background: #fff5f5;">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M4 4l3 3M20 4l-3 3"/></svg>
+                <span>Wake Up Guard</span>
+            </button>
             <button type="button" onclick="openSendAlertModal()" class="btn btn-primary" style="height: 42px; padding: 0 1.25rem; font-size: 0.8125rem; font-weight: 600; white-space: nowrap; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
                 <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
                 <span>Send Alert</span>
@@ -92,9 +100,14 @@ $searchQuery = $filters['search'] ?? '';
                 </div>
                 <p style="font-size: 1rem; font-weight: 600; color: #334155; margin-bottom: 0.25rem;">No notifications found.</p>
                 <p style="font-size: 0.8125rem; color: #94a3b8; margin-bottom: 1.5rem;">Broadcast alerts or assign shifts to guards to start generating notifications.</p>
-                <button type="button" onclick="openSendAlertModal()" class="btn btn-outline" style="color: #2563eb; border-color: #2563eb; font-size: 0.8125rem; cursor: pointer;">
-                    + Send First Alert
-                </button>
+                <div style="display: inline-flex; gap: 0.75rem;">
+                    <button type="button" onclick="openWakeUpModal()" class="btn btn-outline" style="color: #dc2626; border-color: #fca5a5; background: #fff5f5; font-size: 0.8125rem; cursor: pointer;">
+                        Wake Up Guard
+                    </button>
+                    <button type="button" onclick="openSendAlertModal()" class="btn btn-outline" style="color: #2563eb; border-color: #2563eb; font-size: 0.8125rem; cursor: pointer;">
+                        + Send First Alert
+                    </button>
+                </div>
             </div>
         <?php else: ?>
             <div class="table-responsive">
@@ -117,16 +130,38 @@ $searchQuery = $filters['search'] ?? '';
                             $status = strtolower((string)($n['delivery_status'] ?? 'sent'));
                             $type = (string)($n['type'] ?? 'system_alert');
 
+                            // Check acknowledgement metadata for wake up calls
+                            $isWakeUp = ($type === 'wake_up_call' || str_contains($type, 'wake_up') || str_contains($type, 'wakeup'));
+                            $isAcknowledged = false;
+                            $acknowledgedAt = null;
+
+                            if ($isWakeUp) {
+                                $isAcknowledged = \App\Models\Notification::checkRowAcknowledged($n);
+                                if ($isAcknowledged) {
+                                    $dataJson = [];
+                                    if (!empty($n['data_json'])) {
+                                        $parsed = is_string($n['data_json']) ? json_decode($n['data_json'], true) : $n['data_json'];
+                                        if (is_string($parsed)) $parsed = json_decode($parsed, true);
+                                        if (is_array($parsed)) $dataJson = $parsed;
+                                    }
+                                    $acknowledgedAt = $dataJson['acknowledged_at'] ?? null;
+                                }
+                            }
+
                             // Clean type label
                             $typeLabel = 'System';
-                            if (str_contains($type, 'contract')) $typeLabel = 'Contract';
+                            if ($isWakeUp) $typeLabel = 'Wake-Up Call';
+                            elseif (str_contains($type, 'checkin')) $typeLabel = 'Check-In';
+                            elseif (str_contains($type, 'checkout')) $typeLabel = 'Check-Out';
+                            elseif (str_contains($type, 'departure')) $typeLabel = 'Departure';
+                            elseif (str_contains($type, 'contract')) $typeLabel = 'Contract';
                             elseif (str_contains($type, 'shift')) $typeLabel = 'Shift';
                             elseif (str_contains($type, 'attendance')) $typeLabel = 'Attendance';
                             elseif (str_contains($type, 'alert')) $typeLabel = 'Alert';
 
                             // Priority badge styling matching standard pills
                             $prioBg = '#eff6ff'; $prioColor = '#2563eb'; $prioBorder = '#bfdbfe';
-                            if ($prio === 'critical') {
+                            if ($prio === 'critical' || $isWakeUp) {
                                 $prioBg = '#fef2f2'; $prioColor = '#dc2626'; $prioBorder = '#fecaca';
                             } elseif ($prio === 'high') {
                                 $prioBg = '#fffbeb'; $prioColor = '#d97706'; $prioBorder = '#fde68a';
@@ -135,6 +170,11 @@ $searchQuery = $filters['search'] ?? '';
                             }
 
                             // Payload for modal view
+                            $statusDisplay = ucfirst($status);
+                            if ($isWakeUp) {
+                                $statusDisplay = $isAcknowledged ? 'Acknowledged at ' . format_utc_datetime($acknowledgedAt) : 'Pending Acknowledgement';
+                            }
+
                             $detailPayload = json_encode([
                                 'id' => (int)$n['id'],
                                 'title' => $n['title'],
@@ -144,15 +184,18 @@ $searchQuery = $filters['search'] ?? '';
                                 'recipient_name' => $n['recipient_name'] ?? 'Guard #' . $n['user_id'],
                                 'recipient_code' => $n['recipient_code'] ?? '',
                                 'sender_name' => $n['sender_name'] ?? 'System Automation',
-                                'status' => ucfirst($status),
+                                'status' => $statusDisplay,
                                 'created_at' => format_datetime($n['created_at']),
                             ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
                             ?>
                             <tr>
                                 <!-- Notification Title & Truncated Preview -->
                                 <td style="max-width: 320px;">
-                                    <div style="font-weight: 600; color: #0f172a; margin-bottom: 0.2rem; line-height: 1.35;">
-                                        <?= e($n['title']) ?>
+                                    <div style="font-weight: 600; color: #0f172a; margin-bottom: 0.2rem; line-height: 1.35; display: flex; align-items: center; gap: 0.4rem;">
+                                        <?php if ($isWakeUp): ?>
+                                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #dc2626; flex-shrink: 0;" title="Urgent Wake-Up"></span>
+                                        <?php endif; ?>
+                                        <span><?= e($n['title']) ?></span>
                                     </div>
                                     <div style="color: #64748b; font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3;">
                                         <?= e($n['message']) ?>
@@ -161,9 +204,16 @@ $searchQuery = $filters['search'] ?? '';
 
                                 <!-- Type Badge -->
                                 <td>
-                                    <span style="display: inline-block; padding: 0.25rem 0.6rem; background: #eff6ff; color: #1e40af; border: 1px solid #dbeafe; font-weight: 600; border-radius: 4px; font-size: 0.75rem;">
-                                        <?= e($typeLabel) ?>
-                                    </span>
+                                    <?php if ($isWakeUp): ?>
+                                        <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.6rem; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; font-weight: 700; border-radius: 4px; font-size: 0.75rem;">
+                                            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                            Wake-Up Call
+                                        </span>
+                                    <?php else: ?>
+                                        <span style="display: inline-block; padding: 0.25rem 0.6rem; background: #eff6ff; color: #1e40af; border: 1px solid #dbeafe; font-weight: 600; border-radius: 4px; font-size: 0.75rem;">
+                                            <?= e($typeLabel) ?>
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
 
                                 <!-- Priority Pill -->
@@ -183,7 +233,19 @@ $searchQuery = $filters['search'] ?? '';
 
                                 <!-- Status Badge with Dot -->
                                 <td>
-                                    <?php if ($status === 'sent'): ?>
+                                    <?php if ($isWakeUp): ?>
+                                        <?php if ($isAcknowledged): ?>
+                                            <span class="badge-status active" title="Acknowledged at <?= format_utc_datetime($acknowledgedAt) ?>">
+                                                <span class="badge-status-dot"></span>
+                                                Acknowledged (<?= format_utc_time($acknowledgedAt) ?>)
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="badge-status" style="background-color: #fef2f2; color: #dc2626; border: 1px solid #fecaca;" title="Awaiting guard response">
+                                                <span class="badge-status-dot" style="background-color: #dc2626;"></span>
+                                                Pending Ack
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php elseif ($status === 'sent'): ?>
                                         <span class="badge-status active">
                                             <span class="badge-status-dot"></span>
                                             Sent
@@ -410,6 +472,64 @@ $searchQuery = $filters['search'] ?? '';
     </div>
 </div>
 
+<!-- ==========================================================================
+     WAKE UP GUARD MODAL (Urgent Alert Modal Design)
+     ========================================================================== -->
+<div id="wakeUpModal" class="modal-backdrop" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:999; align-items:center; justify-content:center; padding: 1rem;">
+    <div class="modal-container" style="background:#fff; border-radius:12px; width:100%; max-width:480px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); overflow:hidden;">
+        
+        <!-- Modal Header -->
+        <div class="modal-header" style="padding:1.25rem 1.5rem; border-bottom:1px solid #fee2e2; background:#fff5f5; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: #fee2e2; display: flex; align-items: center; justify-content: center; color: #dc2626;">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M4 4l3 3M20 4l-3 3"/></svg>
+                </div>
+                <div>
+                    <h3 style="font-size:1.125rem; font-weight:700; color:#991b1b; margin:0;">Wake Up Guard</h3>
+                    <p style="margin:0; font-size:0.75rem; color:#b91c1c;">Dispatch urgent high-priority alarm</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeWakeUpModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#94a3b8; line-height: 1;">&times;</button>
+        </div>
+
+        <!-- Modal Body (Form) -->
+        <form method="POST" action="<?= url('/admin/notifications/wake-up') ?>" style="margin:0; padding:1.5rem; display:flex; flex-direction:column; gap:1.25rem;">
+            <?= csrf_field() ?>
+
+            <!-- Informational Banner -->
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 0.875rem; font-size: 0.8125rem; color: #991b1b; line-height: 1.45;">
+                <strong>Urgent Action:</strong> This dispatches a high-priority push alert directly to the guard's mobile phone, triggering a continuous wake-up alarm sound until acknowledged.
+            </div>
+
+            <!-- Guard Selection Dropdown -->
+            <div class="form-group">
+                <label class="form-label" style="font-weight: 600; color: #0f172a; margin-bottom: 0.4rem; display: block; font-size: 0.875rem;">
+                    Select Guard on Duty <span class="required-star" style="color: #dc2626;">*</span>
+                </label>
+                <select name="guard_id" id="wakeUpGuardSelect" required class="form-select" style="height:44px; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 0.75rem; font-size: 0.875rem;">
+                    <option value="">-- Choose Guard --</option>
+                    <?php foreach ($guards as $g): ?>
+                        <option value="<?= (int)$g['guard_id'] ?>">
+                            <?= e($g['full_name']) ?> (<?= e($g['employee_code'] ?? 'GRD-' . $g['guard_id']) ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <!-- Form Actions -->
+            <div style="display:flex; justify-content:flex-end; gap:0.75rem; padding-top:1rem; border-top:1px solid #e2e8f0;">
+                <button type="button" onclick="closeWakeUpModal()" class="btn btn-outline" style="height:38px; padding:0 1.15rem; font-size:0.8125rem; cursor:pointer;">
+                    Cancel
+                </button>
+                <button type="submit" class="btn" style="height:38px; padding:0 1.25rem; font-size:0.8125rem; font-weight:600; cursor:pointer; background:#dc2626; color:#fff; border:none; border-radius:6px; display:inline-flex; align-items:center; gap:0.4rem;">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <span>Send Wake-Up Call</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 function openSendAlertModal() {
     const modal = document.getElementById('sendAlertModal');
@@ -420,6 +540,24 @@ function openSendAlertModal() {
 
 function closeSendAlertModal() {
     const modal = document.getElementById('sendAlertModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function openWakeUpModal(guardId = null) {
+    const modal = document.getElementById('wakeUpModal');
+    const select = document.getElementById('wakeUpGuardSelect');
+    if (select && guardId) {
+        select.value = guardId;
+    }
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+function closeWakeUpModal() {
+    const modal = document.getElementById('wakeUpModal');
     if (modal) {
         modal.style.display = 'none';
     }
@@ -471,11 +609,15 @@ function closeNotificationDetails() {
 window.addEventListener('click', function(e) {
     const alertModal = document.getElementById('sendAlertModal');
     const detailsModal = document.getElementById('detailsModal');
+    const wakeUpModal = document.getElementById('wakeUpModal');
     if (e.target === alertModal) {
         alertModal.style.display = 'none';
     }
     if (e.target === detailsModal) {
         detailsModal.style.display = 'none';
+    }
+    if (e.target === wakeUpModal) {
+        wakeUpModal.style.display = 'none';
     }
 });
 </script>

@@ -6,16 +6,102 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
+import 'wake_up_manager.dart';
 import '../../features/attendance/screens/attendance_history_screen.dart';
 import '../../features/duty/screens/home_dashboard_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
+import '../../features/notifications/screens/wake_up_call_screen.dart';
 
 /// Top-level background message handler required by FirebaseMessaging
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  // Note: On Android, Firebase automatically displays notifications when
-  // message.notification is present. We do NOT show a duplicate local notification here.
+  final data = message.data;
+  final type = (data['type'] ?? '').toString().toLowerCase();
+  final screen = (data['screen'] ?? '').toString().toLowerCase();
+  final isWakeUp = (type == 'wake_up' ||
+      type == 'wake_up_call' ||
+      screen == 'wake_up' ||
+      (message.notification?.title?.toLowerCase().contains('wake-up') ?? false));
+
+  if (!isWakeUp) {
+    return;
+  }
+
+  debugPrint('[WakeUp] FCM received');
+  debugPrint('[WakeUp] App state=background');
+  final rawId = data['notification_id'] ?? data['entity_id'] ?? data['id'] ?? '0';
+  final notifId = int.tryParse(rawId.toString()) ?? 0;
+  debugPrint('[WakeUp] notificationId=$notifId');
+
+  await WakeUpManager.initialize();
+  if (await WakeUpManager.isAcknowledgedAsync(notifId)) {
+    debugPrint('[WakeUp] Notification already acknowledged - ignoring');
+    return;
+  }
+
+  // 1. Mark as handled in background storage to prevent duplicate alerts
+  await WakeUpManager.markHandled(notifId);
+
+  // 2. Setup local notifications plugin in background isolate
+  final localNotifications = FlutterLocalNotificationsPlugin();
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const initSettings = InitializationSettings(android: androidSettings);
+  await localNotifications.initialize(initSettings);
+
+  // 3. Ensure wake-up notification channel exists without native notification sound
+  // (Alarm sound is strictly controlled via WakeUpManager / WakeUpAlarmService)
+  const androidWakeUpChannel = AndroidNotificationChannel(
+    NotificationService.wakeupChannelId,
+    NotificationService.wakeupChannelName,
+    description: NotificationService.wakeupChannelDesc,
+    importance: Importance.max,
+    playSound: false,
+    enableVibration: true,
+  );
+
+  final androidPlugin = localNotifications
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  if (androidPlugin != null) {
+    try {
+      await androidPlugin.deleteNotificationChannel(NotificationService.wakeupChannelId);
+    } catch (_) {}
+    await androidPlugin.createNotificationChannel(androidWakeUpChannel);
+  }
+
+  final title = data['title'] ?? message.notification?.title ?? 'URGENT WAKE-UP CALL';
+  final body = data['message'] ?? data['body'] ?? message.notification?.body ?? 'Supervisor has dispatched an urgent wake-up alert.';
+  final notifTagId = notifId > 0 ? notifId : message.hashCode;
+
+  // 4. Trigger high-priority Full-Screen Intent notification immediately
+  await localNotifications.show(
+    notifTagId,
+    title,
+    body,
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        NotificationService.wakeupChannelId,
+        NotificationService.wakeupChannelName,
+        channelDescription: NotificationService.wakeupChannelDesc,
+        importance: Importance.max,
+        priority: Priority.max,
+        icon: '@mipmap/ic_launcher',
+        playSound: false,
+        enableVibration: true,
+        fullScreenIntent: true,
+        ongoing: true,
+        autoCancel: false,
+        category: AndroidNotificationCategory.alarm,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    ),
+    payload: jsonEncode(data),
+  );
+  debugPrint('[WakeUp] Android notification displayed');
+  debugPrint('[WakeUp] Wake-Up notification POSTED');
+
+  // 5. Start alarm audio natively with source=background
+  await WakeUpManager.startAlarmAudioOnly(notifId, source: 'background');
 }
 
 /// Centralized Push Notification Service for Secure360 Mobile Client
@@ -26,6 +112,15 @@ class NotificationService {
   static const String _channelId = 'secure360_notifications';
   static const String _channelName = 'Secure360 Notifications';
   static const String _channelDesc = 'Important alerts, duty rosters, and operational notifications';
+
+  static const String wakeupChannelId = 'secure360_wakeup';
+  static const String wakeupChannelName = 'Secure360 Wake-Up Calls';
+  static const String wakeupChannelDesc = 'Urgent high-priority alarms dispatched by supervisors';
+
+  static const String _wakeupChannelId = wakeupChannelId;
+  static const String _wakeupChannelName = wakeupChannelName;
+  static const String _wakeupChannelDesc = wakeupChannelDesc;
+
   static const String _lastFcmTokenKey = 'secure360_last_fcm_token';
   static const String _lastSyncedUserIdKey = 'secure360_last_synced_user_id';
 
@@ -34,6 +129,48 @@ class NotificationService {
 
   static bool _initialized = false;
   static OverlayEntry? _currentBannerEntry;
+  static Map<String, dynamic>? _pendingInitialPayload;
+
+  /// Check if there is an unhandled notification payload from terminated launch
+  static bool get hasPendingInitialPayload => _pendingInitialPayload != null;
+  static Map<String, dynamic>? get pendingInitialPayload => _pendingInitialPayload;
+
+  /// Clear the pending initial payload
+  static void clearPendingInitialPayload() {
+    _pendingInitialPayload = null;
+  }
+
+  /// Process the pending initial route once app navigation is established
+  static void handlePendingInitialRoute() {
+    if (_pendingInitialPayload != null) {
+      final payload = _pendingInitialPayload!;
+      _pendingInitialPayload = null;
+      final type = (payload['type'] ?? '').toString().toLowerCase();
+      final screen = (payload['screen'] ?? '').toString().toLowerCase();
+      final isWakeUp = (type == 'wake_up' || type == 'wake_up_call' || screen == 'wake_up');
+      if (isWakeUp) {
+        final rawId = payload['notification_id'] ?? payload['entity_id'] ?? payload['id'] ?? '0';
+        final notifId = int.tryParse(rawId.toString()) ?? 0;
+        debugPrint('[WakeUp] Notification tapped');
+        debugPrint('[WakeUp] notificationId=$notifId');
+        debugPrint('[WakeUp] App state=terminated');
+        debugPrint('[WakeUp] Opening WakeUpCallScreen from initial message');
+      }
+      _handleNavigation(payload);
+    }
+  }
+
+  /// Cancel an active system tray notification (e.g. on acknowledge)
+  static Future<void> cancelNotification(int id) async {
+    try {
+      if (id > 0) {
+        await _localNotifications.cancel(id);
+        debugPrint('[WakeUp] Wake-Up notification CANCELLED');
+      }
+    } catch (e) {
+      debugPrint('[NotificationService] cancelNotification error: $e');
+    }
+  }
 
   /// Initialize Firebase and Push Notification handlers
   static Future<void> initialize() async {
@@ -41,6 +178,7 @@ class NotificationService {
 
     try {
       await Firebase.initializeApp();
+      await WakeUpManager.initialize();
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
       // 1. Request notification permissions (POST_NOTIFICATIONS on Android 13+)
@@ -49,12 +187,12 @@ class NotificationService {
         announcement: false,
         badge: true,
         carPlay: false,
-        criticalAlert: false,
+        criticalAlert: true,
         provisional: false,
         sound: true,
       );
 
-      // 2. Setup Android notification channel
+      // 2. Setup Android notification channels
       const androidChannel = AndroidNotificationChannel(
         _channelId,
         _channelName,
@@ -64,10 +202,23 @@ class NotificationService {
         enableVibration: true,
       );
 
+      const androidWakeUpChannel = AndroidNotificationChannel(
+        _wakeupChannelId,
+        _wakeupChannelName,
+        description: _wakeupChannelDesc,
+        importance: Importance.max,
+        playSound: false,
+        enableVibration: true,
+      );
+
       final androidPlugin = _localNotifications
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       if (androidPlugin != null) {
         await androidPlugin.createNotificationChannel(androidChannel);
+        try {
+          await androidPlugin.deleteNotificationChannel(_wakeupChannelId);
+        } catch (_) {}
+        await androidPlugin.createNotificationChannel(androidWakeUpChannel);
       }
 
       // 3. Initialize Flutter Local Notifications for foreground display
@@ -81,18 +232,77 @@ class NotificationService {
             try {
               final data = jsonDecode(response.payload!);
               if (data is Map) {
-                _handleNavigation(Map<String, dynamic>.from(data));
+                _handleNavigation(Map<String, dynamic>.from(data), source: 'notification_tap');
               }
             } catch (_) {}
           }
         },
       );
 
-      // 4. Foreground message listener
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      // 4. Capture any launch notification payload from terminated state
+      final launchDetails = await _localNotifications.getNotificationAppLaunchDetails();
+      if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
+        final payload = launchDetails.notificationResponse?.payload;
+        if (payload != null && payload.isNotEmpty) {
+          try {
+            final data = jsonDecode(payload);
+            if (data is Map) {
+              _pendingInitialPayload = Map<String, dynamic>.from(data);
+              debugPrint('[WakeUp] App state=terminated');
+              debugPrint('[WakeUp] Stored pending launch payload from local notification');
+            }
+          } catch (_) {}
+        }
+      }
+
+      final initialMessage = await _messaging.getInitialMessage();
+      if (initialMessage != null && initialMessage.data.isNotEmpty) {
+        _pendingInitialPayload = Map<String, dynamic>.from(initialMessage.data);
+        debugPrint('[WakeUp] App state=terminated');
+        debugPrint('[WakeUp] Stored pending launch payload from FCM');
+      }
+
+      // 5. Foreground message listener
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        debugPrint('[WakeUp] FCM received');
+        debugPrint('[WakeUp] App state=foreground');
+
         final notification = message.notification;
+        final data = message.data;
+        final type = (data['type'] ?? '').toString().toLowerCase();
+        final screen = (data['screen'] ?? '').toString().toLowerCase();
+        final isWakeUp = (type == 'wake_up' ||
+            type == 'wake_up_call' ||
+            screen == 'wake_up' ||
+            (notification?.title?.toLowerCase().contains('wake-up') ?? false));
+
+        if (isWakeUp) {
+          final rawId = data['notification_id'] ?? data['entity_id'] ?? data['id'] ?? '0';
+          final notifId = int.tryParse(rawId.toString()) ?? 0;
+          debugPrint('[WakeUp] notificationId=$notifId');
+
+          if (!WakeUpManager.canTrigger(notifId)) {
+            return;
+          }
+
+          final title = data['title'] ?? notification?.title ?? 'URGENT WAKE-UP CALL';
+          final body = data['message'] ?? data['body'] ?? notification?.body ?? 'Supervisor has dispatched an urgent wake-up alert.';
+
+          debugPrint('[WakeUp] Opening WakeUpCallScreen');
+          debugPrint('[WakeUp] Starting alarm');
+
+          // Directly launch full-screen WakeUpCallScreen without showing normal notification UI first
+          await WakeUpManager.startWakeUpAlert(
+            notificationId: notifId,
+            title: title,
+            message: body,
+            sentAt: data['sent_at']?.toString(),
+          );
+          return;
+        }
+
         if (notification != null) {
-          // 4a. Show system-tray local notification (useful if the user swipes away the in-app banner)
+          // Standard local notification
           _localNotifications.show(
             message.hashCode,
             notification.title ?? 'Secure360 Alert',
@@ -112,7 +322,7 @@ class NotificationService {
             payload: jsonEncode(message.data),
           );
 
-          // 4b. Show in-app overlay banner while the app is active
+          // Show in-app overlay banner while the app is active
           _showInAppBanner(
             title: notification.title ?? 'Secure360 Alert',
             body: notification.body ?? '',
@@ -123,7 +333,14 @@ class NotificationService {
 
       // 5. Background-tap message listener (app running in background)
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        _handleNavigation(message.data);
+        final data = message.data;
+        final type = (data['type'] ?? '').toString().toLowerCase();
+        final screen = (data['screen'] ?? '').toString().toLowerCase();
+        final isWakeUp = (type == 'wake_up' || type == 'wake_up_call' || screen == 'wake_up');
+        if (isWakeUp) {
+          debugPrint('[WakeUp] App state=background');
+        }
+        _handleNavigation(message.data, source: 'notification_tap');
       });
 
       // 6. Token refresh listener
@@ -137,14 +354,38 @@ class NotificationService {
     }
   }
 
-  /// Check if app was launched by tapping a notification from terminated state
+  /// Check if app was launched by tapping a notification or full-screen intent from terminated state
   static Future<void> checkInitialMessage() async {
+    // If pending initial payload is waiting for session validation, let SplashScreen dispatch it
+    if (_pendingInitialPayload != null) {
+      return;
+    }
+
     try {
+      // 1. Check if launched via local notification full-screen intent
+      final launchDetails = await _localNotifications.getNotificationAppLaunchDetails();
+      if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
+        final payload = launchDetails.notificationResponse?.payload;
+        if (payload != null && payload.isNotEmpty) {
+          try {
+            final data = jsonDecode(payload);
+            if (data is Map) {
+              final map = Map<String, dynamic>.from(data);
+              debugPrint('[WakeUp] App state=terminated');
+              _handleNavigation(map, source: 'initial_message');
+              return;
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 2. Check if launched via FCM initial message
       final initialMessage = await _messaging.getInitialMessage();
       if (initialMessage != null) {
+        debugPrint('[WakeUp] App state=terminated');
         // Small delay to allow the navigator state to be fully mounted
-        Future.delayed(const Duration(milliseconds: 600), () {
-          _handleNavigation(initialMessage.data);
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _handleNavigation(initialMessage.data, source: 'initial_message');
         });
       }
     } catch (e) {
@@ -222,11 +463,11 @@ class NotificationService {
 
   /// Public navigation handler for notification tap events (from notifications screen or banner)
   static void handleNotificationNavigation(Map<String, dynamic> data) {
-    _handleNavigation(data);
+    _handleNavigation(data, source: 'notification_tap');
   }
 
   /// Safe navigation handler based on notification data payload
-  static void _handleNavigation(Map<String, dynamic> data) {
+  static Future<void> _handleNavigation(Map<String, dynamic> data, {String source = 'notification_tap'}) async {
     final nav = ApiService.navigatorKey.currentState;
     if (nav == null) return;
 
@@ -234,7 +475,51 @@ class NotificationService {
     final screen = (data['screen'] ?? '').toString().toLowerCase();
 
     try {
-      if (screen == 'home' || type == 'test') {
+      if (screen == 'wake_up' || type == 'wake_up_call' || type == 'wake_up' || type.contains('wakeup') || type.contains('wake_up')) {
+        final rawId = data['notification_id'] ?? data['entity_id'] ?? data['id'] ?? '0';
+        final notifId = int.tryParse(rawId.toString()) ?? 0;
+
+        debugPrint('[WakeUp] notification tap notification_id=$notifId');
+
+        if (notifId > 0 && await WakeUpManager.isAcknowledgedAsync(notifId)) {
+          debugPrint('[WakeUp] Already acknowledged - ignoring');
+          return;
+        }
+
+        if (notifId > 0 && WakeUpManager.isScreenVisible(notifId)) {
+          debugPrint('[WakeUp] Already handled - ignoring');
+          return;
+        }
+
+        // Query native alarm state directly:
+        final isAlarmActive = await WakeUpManager.isNativeAlarmActive(notifId);
+        debugPrint('[WakeUp] NATIVE_STATE notification_id=$notifId active=$isAlarmActive');
+
+        if (!isAlarmActive) {
+          debugPrint('[WakeUp] Starting alarm');
+          await WakeUpManager.startAlarm(notifId, source: source);
+        } else {
+          debugPrint('[WakeUp] START_RESULT notification_id=$notifId result=SKIPPED_ALREADY_ACTIVE');
+        }
+
+        final title = data['title']?.toString();
+        final message = data['message']?.toString();
+        final sentAt = data['sent_at']?.toString();
+
+        debugPrint('[WakeUp] Opening WakeUpCallScreen');
+
+        nav.push(
+          MaterialPageRoute(
+            builder: (_) => WakeUpCallScreen(
+              notificationId: notifId,
+              title: title,
+              message: message,
+              sentAt: sentAt,
+            ),
+          ),
+        );
+        return;
+      } else if (screen == 'home' || type == 'test') {
         nav.pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const HomeDashboardScreen()),
           (route) => false,

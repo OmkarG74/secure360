@@ -478,3 +478,49 @@ Authorization: Bearer <64-character-plain-token> # (for protected routes)
     "status_code": 200
   }
   ```
+
+---
+
+### 3.13 Admin Wake-Up Call Alert
+- **Endpoint**: `POST /api/v1/admin/notifications/wake-up`
+- **Auth**: `Bearer <token>` (Admin Role)
+- **Request Body**:
+  ```json
+  {
+    "guard_id": 1
+  }
+  ```
+- **Success Response (`200 OK`)**:
+  ```json
+  {
+    "success": true,
+    "message": "Wake-up call dispatched to 1 device(s) of Guard David Guard.",
+    "data": {
+      "notification_id": 105,
+      "guard_name": "David Guard",
+      "total_devices": 1,
+      "sent_count": 1
+    },
+    "status_code": 200
+  }
+  ```
+
+---
+
+### 3.14 Guard Acknowledge Notification
+- **Endpoint**: `POST /api/v1/guard/notifications/{id}/acknowledge`
+- **Auth**: `Bearer <token>` (Guard Role)
+- **Success Response (`200 OK`)**:
+  ```json
+  {
+    "success": true,
+    "message": "Notification acknowledged successfully.",
+    "data": {
+      "notification_id": 105,
+      "acknowledged": true,
+      "acknowledged_at": "2026-09-23 12:13:58"
+    },
+    "status_code": 200
+  }
+  ```
+

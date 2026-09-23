@@ -315,6 +315,54 @@ if (!function_exists('format_time')) {
     }
 }
 
+if (!function_exists('format_utc_time')) {
+    /**
+     * Convert stored UTC timestamp to Asia/Kolkata and format as Time Only: hh:mm AM/PM (e.g. 04:07 PM)
+     */
+    function format_utc_time(mixed $utcDatetime, string $fallback = '—'): string
+    {
+        if (empty($utcDatetime)) {
+            return $fallback;
+        }
+        try {
+            $raw = trim((string)$utcDatetime);
+            if (str_ends_with($raw, 'UTC') || str_ends_with($raw, 'Z') || str_contains($raw, '+')) {
+                $dt = new \DateTime($raw);
+            } else {
+                $dt = new \DateTime($raw, new \DateTimeZone('UTC'));
+            }
+            $dt->setTimezone(new \DateTimeZone('Asia/Kolkata'));
+            return $dt->format('h:i A');
+        } catch (\Throwable) {
+            return format_time($utcDatetime, $fallback);
+        }
+    }
+}
+
+if (!function_exists('format_utc_datetime')) {
+    /**
+     * Convert stored UTC timestamp to Asia/Kolkata and format as Date and Time: dd-MMM-yy hh:mm AM/PM (e.g. 23-Sep-26 04:07 PM)
+     */
+    function format_utc_datetime(mixed $utcDatetime, string $fallback = '—'): string
+    {
+        if (empty($utcDatetime)) {
+            return $fallback;
+        }
+        try {
+            $raw = trim((string)$utcDatetime);
+            if (str_ends_with($raw, 'UTC') || str_ends_with($raw, 'Z') || str_contains($raw, '+')) {
+                $dt = new \DateTime($raw);
+            } else {
+                $dt = new \DateTime($raw, new \DateTimeZone('UTC'));
+            }
+            $dt->setTimezone(new \DateTimeZone('Asia/Kolkata'));
+            return $dt->format('d-M-y h:i A');
+        } catch (\Throwable) {
+            return format_datetime($utcDatetime, $fallback);
+        }
+    }
+}
+
 if (!function_exists('format_date_range')) {
     /**
      * Format to global standard Date Range: dd-MMM-yy → dd-MMM-yy (e.g. 01-Jan-26 → 31-Dec-26)

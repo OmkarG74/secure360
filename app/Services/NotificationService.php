@@ -91,8 +91,18 @@ class NotificationService
             'message' => $message,
             'data_json' => $json,
         ]);
-
         $notificationId = (int)$db->lastInsertId();
+
+        // Ensure data_json in database contains notification_id and initial acknowledgement flag
+        $data['notification_id'] = (string)$notificationId;
+        if ($type === 'wake_up_call' || str_contains($type, 'wake_up') || str_contains($type, 'wakeup')) {
+            $data['acknowledged'] = false;
+        }
+        $updatedJson = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        try {
+            $updDataStmt = $db->prepare("UPDATE notifications SET data_json = :data_json WHERE id = :id");
+            $updDataStmt->execute(['data_json' => $updatedJson, 'id' => $notificationId]);
+        } catch (\Throwable) {}
 
         // 4. Dispatch FCM Push to Target Devices
         $fcmStatus = [
@@ -307,5 +317,177 @@ class NotificationService
 
         $options['organization_id'] = $organizationId;
         return self::sendToUsers($userIds, $title, $message, $type, $data, $options);
+    }
+
+    /**
+     * Send notification to all active administrators of an organization
+     *
+     * @param int $organizationId Target organization ID
+     * @param string $title Headline
+     * @param string $message Detailed message
+     * @param string $type e.g. attendance_checkin, attendance_checkout, post_departure
+     * @param array $data Additional metadata payload
+     * @param array $options Configuration options (priority, entity_type, entity_id, sender_user_id)
+     * @return array
+     */
+    public static function sendToAdmins(
+        int $organizationId,
+        string $title,
+        string $message,
+        string $type,
+        array $data = [],
+        array $options = []
+    ): array {
+        $db = Database::getConnection();
+
+        // 1. Fetch all active Admin user IDs belonging to this organization
+        $stmt = $db->prepare(
+            "SELECT u.id 
+             FROM users u
+             JOIN roles r ON u.role_id = r.id
+             WHERE u.organization_id = :org_id 
+               AND r.role_code = 'admin'
+               AND u.status = 0 
+               AND u.deleted_at IS NULL"
+        );
+        $stmt->execute(['org_id' => $organizationId]);
+        $adminUserIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $options['organization_id'] = $organizationId;
+
+        // If specific admin accounts exist, create individual notifications for each
+        if (!empty($adminUserIds)) {
+            return self::sendToUsers($adminUserIds, $title, $message, $type, $data, $options);
+        }
+
+        // Fallback: If no dedicated admin user account is present in this org yet,
+        // create an organization-level notification record (user_id = null)
+        // so that any admin signing in will see it in the topbar bell.
+        $priority = strtolower((string)($options['priority'] ?? 'normal'));
+        if (!in_array($priority, ['low', 'normal', 'high', 'critical'], true)) {
+            $priority = 'normal';
+        }
+        $entityType = isset($options['entity_type']) ? (string)$options['entity_type'] : null;
+        $entityId = isset($options['entity_id'])
+            ? (string)$options['entity_id']
+            : (isset($data['entity_id']) ? (string)$data['entity_id'] : null);
+        $senderUserId = isset($options['sender_user_id']) ? (int)$options['sender_user_id'] : null;
+
+        $json = !empty($data) ? json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+        $insStmt = $db->prepare(
+            "INSERT INTO notifications 
+                (organization_id, user_id, sender_user_id, type, entity_type, entity_id, priority, title, message, data_json, is_read, delivery_status, created_at)
+             VALUES 
+                (:org_id, NULL, :sender_user_id, :type, :entity_type, :entity_id, :priority, :title, :message, :data_json, 0, 'sent', NOW())"
+        );
+        $insStmt->execute([
+            'org_id' => $organizationId,
+            'sender_user_id' => $senderUserId,
+            'type' => $type,
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'priority' => $priority,
+            'title' => $title,
+            'message' => $message,
+            'data_json' => $json,
+        ]);
+
+        $notifId = (int)$db->lastInsertId();
+        return [
+            'total_users' => 1,
+            'successful_dispatches' => 1,
+            'results' => [
+                'org_' . $organizationId => [
+                    'success' => true,
+                    'notification_id' => $notifId,
+                    'fcm_status' => ['total_devices' => 0, 'sent_count' => 0, 'failed_count' => 0, 'results' => []],
+                ]
+            ],
+        ];
+    }
+
+    /**
+     * Dispatch an immediate, high-priority Wake-Up Call to a specific Guard
+     *
+     * @param int $guardId Target guard ID
+     * @param int $adminUserId Admin initiator user ID
+     * @param int $organizationId Scoped organization ID
+     * @return array{success: bool, notification_id: int, guard_name: string, total_devices: int, sent_count: int, message: string}
+     */
+    public static function sendWakeUpCall(int $guardId, int $adminUserId, int $organizationId): array
+    {
+        $db = Database::getConnection();
+
+        // 1. Validate guard belongs to this organization and is active
+        $stmt = $db->prepare(
+            "SELECT g.id as guard_id, g.user_id, u.organization_id, u.full_name, u.employee_code
+             FROM guards g
+             JOIN users u ON g.user_id = u.id
+             WHERE g.id = :guard_id 
+               AND u.organization_id = :org_id 
+               AND g.status = 0 
+               AND g.deleted_at IS NULL
+             LIMIT 1"
+        );
+        $stmt->execute(['guard_id' => $guardId, 'org_id' => $organizationId]);
+        $guard = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$guard) {
+            return [
+                'success' => false,
+                'notification_id' => 0,
+                'guard_name' => '',
+                'total_devices' => 0,
+                'sent_count' => 0,
+                'message' => "Guard #{$guardId} was not found or is not active in this organization.",
+            ];
+        }
+
+        $guardUserId = (int)$guard['user_id'];
+        $guardName = (string)$guard['full_name'];
+        $sentAt = date('Y-m-d H:i:s');
+        $title = 'Wake-Up Call';
+        $message = 'Your supervisor has sent you a wake-up call.';
+
+        $options = [
+            'priority' => 'critical',
+            'entity_type' => 'guard',
+            'entity_id' => (string)$guardId,
+            'sender_user_id' => $adminUserId,
+            'organization_id' => $organizationId,
+        ];
+
+        $data = [
+            'type' => 'wake_up',
+            'guard_id' => (string)$guardId,
+            'guard_name' => $guardName,
+            'screen' => 'wake_up',
+            'entity_id' => (string)$guardId,
+            'sent_at' => $sentAt,
+        ];
+
+        // sendToUser inserts DB notification and sends FCM to all active tokens
+        $res = self::sendToUser($guardUserId, $title, $message, 'wake_up', $data, $options);
+        $notifId = $res['notification_id'] ?? 0;
+        $fcm = $res['fcm_status'] ?? [];
+        $totalDevices = (int)($fcm['total_devices'] ?? 0);
+        $sentCount = (int)($fcm['sent_count'] ?? 0);
+
+        if ($totalDevices === 0) {
+            $statusMessage = 'Wake-up notification recorded, but the Guard has no active registered device.';
+        } elseif ($sentCount > 0) {
+            $statusMessage = "Wake-up call dispatched successfully to {$sentCount} device(s) for {$guardName}.";
+        } else {
+            $statusMessage = 'Wake-up notification recorded, but device delivery failed.';
+        }
+
+        return [
+            'success' => true,
+            'notification_id' => $notifId,
+            'guard_name' => $guardName,
+            'total_devices' => $totalDevices,
+            'sent_count' => $sentCount,
+            'message' => $statusMessage,
+        ];
     }
 }

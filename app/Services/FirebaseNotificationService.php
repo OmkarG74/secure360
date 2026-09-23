@@ -22,6 +22,8 @@ class FirebaseNotificationService
     private const FCM_V1_SEND_URL = 'https://fcm.googleapis.com/v1/projects/%s/messages:send';
     private const DEFAULT_ANDROID_CHANNEL_ID = 'secure360_notifications';
 
+    private const WAKEUP_ANDROID_CHANNEL_ID = 'secure360_wakeup';
+
     private ?array $serviceAccount = null;
     private string $projectRoot;
     private string $cacheFile;
@@ -59,24 +61,56 @@ class FirebaseNotificationService
             ];
         }
 
-        $payload = [
-            'message' => [
-                'token' => $deviceToken,
-                'notification' => [
-                    'title' => $title,
-                    'body' => $body,
-                ],
-                'data' => $this->sanitizeDataPayload($data),
-                'android' => [
-                    'priority' => 'high',
-                    'notification' => [
-                        'channel_id' => self::DEFAULT_ANDROID_CHANNEL_ID,
-                        'sound' => 'default',
-                        'default_vibrate_timings' => true,
+        $isWakeUp = in_array(($data['type'] ?? ''), ['wake_up', 'wake_up_call'], true) || (($data['screen'] ?? '') === 'wake_up');
+        $channelId = $isWakeUp ? self::WAKEUP_ANDROID_CHANNEL_ID : ($data['channel_id'] ?? self::DEFAULT_ANDROID_CHANNEL_ID);
+        $sound = $isWakeUp ? 'wake_up_alarm' : 'default';
+
+        if ($isWakeUp) {
+            // Urgent Wake-Up Call:
+            // Send as high-priority data message for Android so Google Play Services
+            // does NOT hijack it with a passive system-tray notice.
+            // This invokes the Flutter background/foreground handler immediately,
+            // which posts the Android full-screen intent and starts the looping alarm audio!
+            $wakeUpData = array_merge($data, [
+                'title' => $title,
+                'message' => $body,
+                'body' => $body,
+                'type' => 'wake_up',
+                'screen' => 'wake_up',
+                'channel_id' => self::WAKEUP_ANDROID_CHANNEL_ID,
+            ]);
+
+            $payload = [
+                'message' => [
+                    'token' => $deviceToken,
+                    'data' => $this->sanitizeDataPayload($wakeUpData),
+                    'android' => [
+                        'priority' => 'high',
+                        'ttl' => '0s',
                     ],
                 ],
-            ],
-        ];
+            ];
+        } else {
+            // Standard notification: passive system tray notice
+            $payload = [
+                'message' => [
+                    'token' => $deviceToken,
+                    'notification' => [
+                        'title' => $title,
+                        'body' => $body,
+                    ],
+                    'data' => $this->sanitizeDataPayload($data),
+                    'android' => [
+                        'priority' => 'high',
+                        'notification' => [
+                            'channel_id' => $channelId,
+                            'sound' => $sound,
+                            'default_vibrate_timings' => true,
+                        ],
+                    ],
+                ],
+            ];
+        }
 
         $result = $this->sendHttpRequest($payload);
 
@@ -178,6 +212,14 @@ class FirebaseNotificationService
             'sent_count' => $sentCount,
             'failed_count' => $failedCount,
         ];
+    }
+
+    /**
+     * Explicitly deactivate an invalid or unregistered device token
+     */
+    public function deactivateInvalidToken(string $deviceToken): bool
+    {
+        return $this->deviceTokenModel->deactivateToken($deviceToken);
     }
 
     /**
@@ -296,7 +338,11 @@ class FirebaseNotificationService
                 }
             }
 
-            if (!$isUnregistered && str_contains(strtolower($errorMessage), 'not registered')) {
+            if (!$isUnregistered && (
+                str_contains(strtolower($errorMessage), 'not registered') ||
+                str_contains(strtolower($errorMessage), 'not a valid fcm registration token') ||
+                str_contains(strtolower($errorMessage), 'invalid registration token')
+            )) {
                 $isUnregistered = true;
             }
 
