@@ -67,6 +67,9 @@ $router->group([
 
     // 6. Operational Reports & Telemetry
     $router->get('/reports', [ReportController::class, 'index']);
+    $router->get('/reports/export/excel', [ReportController::class, 'exportExcel']);
+    $router->get('/reports/export/pdf', [ReportController::class, 'exportPdf']);
+    $router->get('/reports/ajax/filter-options', [ReportController::class, 'ajaxFilterOptions']);
 
     // 7. Modular Organisation Settings
     $router->get('/settings', [SettingsController::class, 'index']);

@@ -48,6 +48,17 @@ class PdfReportService
     }
 
     /**
+     * Generate and stream Operational Report PDF to browser
+     */
+    public function exportOperationalReport(string $reportType, array $records, array $meta = []): void
+    {
+        $reportTypeSlug = str_replace('_', '-', $reportType);
+        $filename = 'secure360-' . $reportTypeSlug . '-report-' . date('Y-m-d_His') . '.pdf';
+        $pdfContent = $this->generateOperationalReportPdf($reportType, $records, $meta);
+        $this->streamPdf($filename, $pdfContent);
+    }
+
+    /**
      * Stream PDF bytes with clean buffer safety
      */
     private function streamPdf(string $filename, string $pdfContent): void
@@ -397,6 +408,326 @@ class PdfReportService
             // 6. Page Footer
             $stream[] = "0.886 0.910 0.941 RG 1 w 40 40 m 802 40 l S";
             $stream[] = "BT /F1 8 Tf 0.392 0.455 0.545 rg 40 28 Td (Secure360 Enterprise Workforce Platform  |  Official Invoices Audit) Tj ET";
+            $stream[] = "BT /F2 8 Tf 0.145 0.388 0.921 rg 740 28 Td (Page " . $pageNum . " of " . $totalPages . ") Tj ET";
+
+            $pageStreams[] = implode("\n", $stream);
+        }
+
+        return $this->compilePdf($pageStreams);
+    }
+
+    /**
+     * Build raw PDF binary for Operational Reports
+     */
+    public function generateOperationalReportPdf(string $reportType, array $records, array $meta = []): string
+    {
+        $rowsPerPage = 12;
+        $totalRecords = count($records);
+        $pages = $totalRecords > 0 ? array_chunk($records, $rowsPerPage) : [[]];
+        $totalPages = count($pages);
+
+        $reportTitle = strtoupper(str_replace('_', ' ', $reportType)) . ' REPORT';
+        $presetLabel = $meta['preset_label'] ?? 'This Month';
+        $fromDate = !empty($meta['from_date']) ? date('d-M-y', strtotime($meta['from_date'])) : '—';
+        $toDate = !empty($meta['to_date']) ? date('d-M-y', strtotime($meta['to_date'])) : '—';
+        $clientName = $this->truncateText($meta['client_name'] ?? 'All Clients', 20);
+        $siteName = $this->truncateText($meta['site_name'] ?? 'All Sites', 20);
+        $guardName = $this->truncateText($meta['guard_name'] ?? 'All Guards', 18);
+        $statusLabel = $meta['status_label'] ?? 'All';
+        $generatedAt = date('d M Y, H:i');
+        $generatedBy = $meta['generated_by'] ?? 'Admin';
+
+        $pageStreams = [];
+
+        foreach ($pages as $pageIndex => $pageRows) {
+            $pageNum = $pageIndex + 1;
+            $stream = [];
+
+            // 1. Top Brand Banner Accent (Blue #2563EB)
+            $stream[] = "0.145 0.388 0.921 rg 0 589 842 6 re f";
+
+            // 2. Header
+            $stream[] = "BT /F2 18 Tf 0.059 0.090 0.165 rg 40 558 Td (SECURE360) Tj ET";
+            $stream[] = "BT /F1 8.5 Tf 0.392 0.455 0.545 rg 40 546 Td (Operational Reports & Workforce Analytics) Tj ET";
+
+            $stream[] = "BT /F2 15 Tf 0.145 0.388 0.921 rg 580 558 Td (" . $this->escapePdf($reportTitle) . ") Tj ET";
+            $stream[] = "BT /F1 8 Tf 0.392 0.455 0.545 rg 580 546 Td (Confidential Management Document) Tj ET";
+
+            // Divider Rule
+            $stream[] = "0.886 0.910 0.941 RG 1 w 40 534 m 802 534 l S";
+
+            // 3. Filter Summary Box
+            $stream[] = "0.960 0.970 0.980 rg 40 488 762 38 re f";
+            $stream[] = "0.886 0.910 0.941 RG 1 w 40 488 762 38 re S";
+
+            $stream[] = "BT /F2 8 Tf 0.278 0.333 0.412 rg 52 512 Td (FILTERS:) Tj /F1 8 Tf ( Range: ) Tj /F2 8 Tf (" . $this->escapePdf($fromDate . " to " . $toDate . " (" . $presetLabel . ")") . ") Tj /F1 8 Tf (   |   Client: ) Tj /F2 8 Tf (" . $this->escapePdf($clientName) . ") Tj /F1 8 Tf (   |   Site: ) Tj /F2 8 Tf (" . $this->escapePdf($siteName) . ") Tj ET";
+            $stream[] = "BT /F1 8 Tf 0.392 0.455 0.545 rg 52 496 Td (Guard: ) Tj /F2 8 Tf (" . $this->escapePdf($guardName) . ") Tj /F1 8 Tf (   |   Status: ) Tj /F2 8 Tf (" . $this->escapePdf($statusLabel) . ") Tj /F1 8 Tf (   |   Total: ) Tj /F2 8 Tf (" . $totalRecords . " records) Tj /F1 8 Tf (   |   Generated: " . $generatedAt . " by " . $this->escapePdf($generatedBy) . ") Tj ET";
+
+            // 4. Table Header
+            $tableY = 458;
+            $stream[] = "0.145 0.388 0.921 rg 40 " . ($tableY - 22) . " 762 22 re f";
+
+            switch ($reportType) {
+                case 'contracts':
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 48 " . ($tableY - 15) . " Td (CONTRACT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 140 " . ($tableY - 15) . " Td (CLIENT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 295 " . ($tableY - 15) . " Td (DUTY SITE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 455 " . ($tableY - 15) . " Td (START) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 535 " . ($tableY - 15) . " Td (END) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 615 " . ($tableY - 15) . " Td (GUARDS) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 710 " . ($tableY - 15) . " Td (STATUS) Tj ET";
+                    break;
+
+                case 'shifts':
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 48 " . ($tableY - 15) . " Td (DATE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 120 " . ($tableY - 15) . " Td (SHIFT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 240 " . ($tableY - 15) . " Td (CLIENT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 370 " . ($tableY - 15) . " Td (DUTY SITE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 505 " . ($tableY - 15) . " Td (SCHEDULED) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 605 " . ($tableY - 15) . " Td (GUARD) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 725 " . ($tableY - 15) . " Td (STATUS) Tj ET";
+                    break;
+
+                case 'sites_clients':
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 48 " . ($tableY - 15) . " Td (DATE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 115 " . ($tableY - 15) . " Td (CLIENT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 240 " . ($tableY - 15) . " Td (DUTY SITE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 365 " . ($tableY - 15) . " Td (SITE STATUS) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 445 " . ($tableY - 15) . " Td (GUARD) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 570 " . ($tableY - 15) . " Td (SHIFT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 660 " . ($tableY - 15) . " Td (IN / OUT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 735 " . ($tableY - 15) . " Td (STATUS) Tj ET";
+                    break;
+
+                case 'guards':
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 48 " . ($tableY - 15) . " Td (DATE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 115 " . ($tableY - 15) . " Td (GUARD) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 230 " . ($tableY - 15) . " Td (BADGE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 295 " . ($tableY - 15) . " Td (DUTY SITE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 430 " . ($tableY - 15) . " Td (CLIENT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 560 " . ($tableY - 15) . " Td (SHIFT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 655 " . ($tableY - 15) . " Td (IN / OUT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 735 " . ($tableY - 15) . " Td (STATUS) Tj ET";
+                    break;
+
+                case 'attendance':
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 48 " . ($tableY - 15) . " Td (DATE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 115 " . ($tableY - 15) . " Td (GUARD) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 230 " . ($tableY - 15) . " Td (BADGE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 295 " . ($tableY - 15) . " Td (CLIENT / SITE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 475 " . ($tableY - 15) . " Td (SHIFT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 565 " . ($tableY - 15) . " Td (IN / OUT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 645 " . ($tableY - 15) . " Td (ATTENDANCE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 735 " . ($tableY - 15) . " Td (GPS) Tj ET";
+                    break;
+
+                case 'all_operations':
+                default:
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 48 " . ($tableY - 15) . " Td (DATE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 115 " . ($tableY - 15) . " Td (GUARD) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 225 " . ($tableY - 15) . " Td (BADGE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 285 " . ($tableY - 15) . " Td (CLIENT / SITE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 450 " . ($tableY - 15) . " Td (SHIFT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 540 " . ($tableY - 15) . " Td (IN / OUT) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 625 " . ($tableY - 15) . " Td (GPS) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 690 " . ($tableY - 15) . " Td (ATTENDANCE) Tj ET";
+                    $stream[] = "BT /F2 8.5 Tf 1 1 1 rg 752 " . ($tableY - 15) . " Td (SHIFT) Tj ET";
+                    break;
+            }
+
+            // 5. Data Rows
+            $currY = $tableY - 22;
+            $rowHeight = 26;
+
+            foreach ($pageRows as $idx => $r) {
+                if ($idx % 2 === 1) {
+                    $stream[] = "0.976 0.984 0.992 rg 40 " . ($currY - $rowHeight) . " 762 " . $rowHeight . " re f";
+                }
+                $stream[] = "0.945 0.961 0.976 RG 0.5 w 40 " . ($currY - $rowHeight) . " m 802 " . ($currY - $rowHeight) . " l S";
+
+                $dateDisplay = !empty($r['date']) && $r['date'] !== '—' ? date('d-M-y', strtotime($r['date'])) : '—';
+
+                switch ($reportType) {
+                    case 'contracts':
+                        $code = (string)($r['contract_code'] ?? '—');
+                        $client = $this->truncateText((string)($r['customer_name'] ?? '—'), 24);
+                        $site = $this->truncateText((string)($r['site_name'] ?? 'Multiple Sites'), 24);
+                        $sDate = !empty($r['start_date']) ? date('d-M-y', strtotime($r['start_date'])) : '—';
+                        $eDate = (!empty($r['end_date']) && $r['end_date'] !== 'Ongoing') ? date('d-M-y', strtotime($r['end_date'])) : 'Ongoing';
+                        $guardsText = ($r['assigned_guards'] ?? 0) . ' / ' . ($r['guard_limit'] ?? 0);
+                        $statusText = strtoupper((string)($r['status_label'] ?? 'ACTIVE'));
+
+                        $stream[] = "BT /F2 8 Tf 0.059 0.090 0.165 rg 48 " . ($currY - 16) . " Td (" . $this->escapePdf($code) . ") Tj ET";
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 140 " . ($currY - 16) . " Td (" . $this->escapePdf($client) . ") Tj ET";
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 295 " . ($currY - 16) . " Td (" . $this->escapePdf($site) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 455 " . ($currY - 16) . " Td (" . $this->escapePdf($sDate) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 535 " . ($currY - 16) . " Td (" . $this->escapePdf($eDate) . ") Tj ET";
+                        $stream[] = "BT /F2 8 Tf 0.059 0.090 0.165 rg 615 " . ($currY - 16) . " Td (" . $this->escapePdf($guardsText) . ") Tj ET";
+
+                        if ($statusText === 'ACTIVE') {
+                            $stream[] = "0.925 0.992 0.961 rg 710 " . ($currY - 19) . " 55 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.020 0.588 0.412 rg 718 " . ($currY - 13) . " Td (ACTIVE) Tj ET";
+                        } elseif (str_contains($statusText, 'EXPIRING')) {
+                            $stream[] = "1 0.984 0.922 rg 710 " . ($currY - 19) . " 65 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.706 0.325 0.035 rg 715 " . ($currY - 13) . " Td (EXPIRING) Tj ET";
+                        } else {
+                            $stream[] = "0.996 0.929 0.929 rg 710 " . ($currY - 19) . " 55 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.886 0.176 0.176 rg 718 " . ($currY - 13) . " Td (EXPIRED) Tj ET";
+                        }
+                        break;
+
+                    case 'shifts':
+                        $sName = $this->truncateText((string)($r['shift_name'] ?? '—'), 18);
+                        $client = $this->truncateText((string)($r['customer_name'] ?? '—'), 20);
+                        $site = $this->truncateText((string)($r['site_name'] ?? '—'), 20);
+                        $sched = (string)($r['scheduled_time'] ?? '—');
+                        $gName = $this->truncateText((string)($r['guard_name'] ?? '—'), 18);
+                        $st = strtoupper((string)($r['shift_status'] ?? 'COMPLETED'));
+
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 48 " . ($currY - 16) . " Td (" . $this->escapePdf($dateDisplay) . ") Tj ET";
+                        $stream[] = "BT /F2 8 Tf 0.059 0.090 0.165 rg 120 " . ($currY - 16) . " Td (" . $this->escapePdf($sName) . ") Tj ET";
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 240 " . ($currY - 16) . " Td (" . $this->escapePdf($client) . ") Tj ET";
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 370 " . ($currY - 16) . " Td (" . $this->escapePdf($site) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 505 " . ($currY - 16) . " Td (" . $this->escapePdf($sched) . ") Tj ET";
+                        $stream[] = "BT /F2 8 Tf 0.059 0.090 0.165 rg 605 " . ($currY - 16) . " Td (" . $this->escapePdf($gName) . ") Tj ET";
+
+                        if ($st === 'COMPLETED' || $st === 'ACTIVE') {
+                            $stream[] = "0.925 0.992 0.961 rg 725 " . ($currY - 19) . " 58 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.020 0.588 0.412 rg 730 " . ($currY - 13) . " Td (" . $this->escapePdf($st) . ") Tj ET";
+                        } else {
+                            $stream[] = "0.996 0.929 0.929 rg 725 " . ($currY - 19) . " 58 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.886 0.176 0.176 rg 732 " . ($currY - 13) . " Td (" . $this->escapePdf($st) . ") Tj ET";
+                        }
+                        break;
+
+                    case 'sites_clients':
+                        $client = $this->truncateText((string)($r['customer_name'] ?? '—'), 20);
+                        $site = $this->truncateText((string)($r['site_name'] ?? '—'), 20);
+                        $siteSt = (string)($r['site_status_label'] ?? 'Active');
+                        $gName = $this->truncateText((string)($r['guard_name'] ?? '—'), 18);
+                        $sName = $this->truncateText((string)($r['shift_name'] ?? '—'), 14);
+                        $inOut = ($r['check_in'] ?? '—') . ' / ' . ($r['check_out'] ?? '—');
+                        $attSt = strtoupper((string)($r['attendance_status'] ?? 'ON DUTY'));
+
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 48 " . ($currY - 16) . " Td (" . $this->escapePdf($dateDisplay) . ") Tj ET";
+                        $stream[] = "BT /F2 8 Tf 0.059 0.090 0.165 rg 115 " . ($currY - 16) . " Td (" . $this->escapePdf($client) . ") Tj ET";
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 240 " . ($currY - 16) . " Td (" . $this->escapePdf($site) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 365 " . ($currY - 16) . " Td (" . $this->escapePdf($siteSt) . ") Tj ET";
+                        $stream[] = "BT /F2 8 Tf 0.059 0.090 0.165 rg 445 " . ($currY - 16) . " Td (" . $this->escapePdf($gName) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 570 " . ($currY - 16) . " Td (" . $this->escapePdf($sName) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 660 " . ($currY - 16) . " Td (" . $this->escapePdf($inOut) . ") Tj ET";
+
+                        if ($attSt === 'COMPLETED') {
+                            $stream[] = "0.925 0.992 0.961 rg 735 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.020 0.588 0.412 rg 738 " . ($currY - 13) . " Td (COMPLETED) Tj ET";
+                        } elseif ($attSt === 'ON DUTY') {
+                            $stream[] = "0.937 0.965 1.000 rg 735 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.145 0.388 0.922 rg 741 " . ($currY - 13) . " Td (ON DUTY) Tj ET";
+                        } else {
+                            $stream[] = "0.996 0.949 0.949 rg 735 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.863 0.149 0.149 rg 738 " . ($currY - 13) . " Td (CANCELLED) Tj ET";
+                        }
+                        break;
+
+                    case 'guards':
+                        $gName = $this->truncateText((string)($r['guard_name'] ?? '—'), 18);
+                        $badge = (string)($r['guard_badge'] ?? '—');
+                        $site = $this->truncateText((string)($r['site_name'] ?? '—'), 20);
+                        $client = $this->truncateText((string)($r['customer_name'] ?? '—'), 20);
+                        $sName = $this->truncateText((string)($r['shift_name'] ?? '—'), 14);
+                        $inOut = ($r['check_in'] ?? '—') . ' / ' . ($r['check_out'] ?? '—');
+                        $attSt = strtoupper((string)($r['attendance_status'] ?? 'ON DUTY'));
+
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 48 " . ($currY - 16) . " Td (" . $this->escapePdf($dateDisplay) . ") Tj ET";
+                        $stream[] = "BT /F2 8 Tf 0.059 0.090 0.165 rg 115 " . ($currY - 16) . " Td (" . $this->escapePdf($gName) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 230 " . ($currY - 16) . " Td (" . $this->escapePdf($badge) . ") Tj ET";
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 295 " . ($currY - 16) . " Td (" . $this->escapePdf($site) . ") Tj ET";
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 430 " . ($currY - 16) . " Td (" . $this->escapePdf($client) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 560 " . ($currY - 16) . " Td (" . $this->escapePdf($sName) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 655 " . ($currY - 16) . " Td (" . $this->escapePdf($inOut) . ") Tj ET";
+
+                        if ($attSt === 'COMPLETED') {
+                            $stream[] = "0.925 0.992 0.961 rg 735 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.020 0.588 0.412 rg 738 " . ($currY - 13) . " Td (COMPLETED) Tj ET";
+                        } elseif ($attSt === 'ON DUTY') {
+                            $stream[] = "0.937 0.965 1.000 rg 735 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.145 0.388 0.922 rg 741 " . ($currY - 13) . " Td (ON DUTY) Tj ET";
+                        } else {
+                            $stream[] = "0.996 0.949 0.949 rg 735 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.863 0.149 0.149 rg 738 " . ($currY - 13) . " Td (CANCELLED) Tj ET";
+                        }
+                        break;
+
+                    case 'attendance':
+                        $gName = $this->truncateText((string)($r['guard_name'] ?? '—'), 18);
+                        $badge = (string)($r['guard_badge'] ?? '—');
+                        $clientSite = $this->truncateText(($r['customer_name'] ?? '—') . ' / ' . ($r['site_name'] ?? '—'), 26);
+                        $sName = $this->truncateText((string)($r['shift_name'] ?? '—'), 14);
+                        $inOut = ($r['check_in'] ?? '—') . ' / ' . ($r['check_out'] ?? '—');
+                        $attSt = strtoupper((string)($r['attendance_status'] ?? 'ON DUTY'));
+                        $gpsSt = (string)($r['gps_status'] ?? 'No GPS');
+
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 48 " . ($currY - 16) . " Td (" . $this->escapePdf($dateDisplay) . ") Tj ET";
+                        $stream[] = "BT /F2 8 Tf 0.059 0.090 0.165 rg 115 " . ($currY - 16) . " Td (" . $this->escapePdf($gName) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 230 " . ($currY - 16) . " Td (" . $this->escapePdf($badge) . ") Tj ET";
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 295 " . ($currY - 16) . " Td (" . $this->escapePdf($clientSite) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 475 " . ($currY - 16) . " Td (" . $this->escapePdf($sName) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 565 " . ($currY - 16) . " Td (" . $this->escapePdf($inOut) . ") Tj ET";
+
+                        if ($attSt === 'COMPLETED') {
+                            $stream[] = "0.925 0.992 0.961 rg 645 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.020 0.588 0.412 rg 648 " . ($currY - 13) . " Td (COMPLETED) Tj ET";
+                        } elseif ($attSt === 'ON DUTY') {
+                            $stream[] = "0.937 0.965 1.000 rg 645 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.145 0.388 0.922 rg 651 " . ($currY - 13) . " Td (ON DUTY) Tj ET";
+                        } else {
+                            $stream[] = "0.996 0.949 0.949 rg 645 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 7 Tf 0.863 0.149 0.149 rg 648 " . ($currY - 13) . " Td (CANCELLED) Tj ET";
+                        }
+
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 735 " . ($currY - 16) . " Td (" . $this->escapePdf($this->truncateText($gpsSt, 12)) . ") Tj ET";
+                        break;
+
+                    case 'all_operations':
+                    default:
+                        $gName = $this->truncateText((string)($r['guard_name'] ?? '—'), 16);
+                        $badge = (string)($r['guard_badge'] ?? '—');
+                        $clientSite = $this->truncateText(($r['customer_name'] ?? '—') . ' / ' . ($r['site_name'] ?? '—'), 24);
+                        $sName = $this->truncateText((string)($r['shift_name'] ?? '—'), 12);
+                        $inOut = ($r['check_in'] ?? '—') . ' / ' . ($r['check_out'] ?? '—');
+                        $gpsSt = (string)($r['gps_status'] ?? 'No GPS');
+                        $attSt = strtoupper((string)($r['attendance_status'] ?? 'ON DUTY'));
+                        $shSt = strtoupper((string)($r['shift_status'] ?? 'COMPLETED'));
+
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 48 " . ($currY - 16) . " Td (" . $this->escapePdf($dateDisplay) . ") Tj ET";
+                        $stream[] = "BT /F2 8 Tf 0.059 0.090 0.165 rg 115 " . ($currY - 16) . " Td (" . $this->escapePdf($gName) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 225 " . ($currY - 16) . " Td (" . $this->escapePdf($badge) . ") Tj ET";
+                        $stream[] = "BT /F1 8 Tf 0.200 0.255 0.333 rg 285 " . ($currY - 16) . " Td (" . $this->escapePdf($clientSite) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 450 " . ($currY - 16) . " Td (" . $this->escapePdf($sName) . ") Tj ET";
+                        $stream[] = "BT /F1 7.5 Tf 0.392 0.455 0.545 rg 540 " . ($currY - 16) . " Td (" . $this->escapePdf($inOut) . ") Tj ET";
+                        $stream[] = "BT /F1 7 Tf 0.392 0.455 0.545 rg 625 " . ($currY - 16) . " Td (" . $this->escapePdf($this->truncateText($gpsSt, 10)) . ") Tj ET";
+
+                        if ($attSt === 'COMPLETED') {
+                            $stream[] = "0.925 0.992 0.961 rg 685 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 6.5 Tf 0.020 0.588 0.412 rg 688 " . ($currY - 13) . " Td (COMPLETED) Tj ET";
+                        } elseif ($attSt === 'ON DUTY') {
+                            $stream[] = "0.937 0.965 1.000 rg 685 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 6.5 Tf 0.145 0.388 0.922 rg 691 " . ($currY - 13) . " Td (ON DUTY) Tj ET";
+                        } else {
+                            $stream[] = "0.996 0.949 0.949 rg 685 " . ($currY - 19) . " 54 14 re f";
+                            $stream[] = "BT /F2 6.5 Tf 0.863 0.149 0.149 rg 688 " . ($currY - 13) . " Td (CANCELLED) Tj ET";
+                        }
+
+                        $stream[] = "BT /F2 7 Tf 0.200 0.255 0.333 rg 752 " . ($currY - 16) . " Td (" . $this->escapePdf($this->truncateText($shSt, 8)) . ") Tj ET";
+                        break;
+                }
+
+                $currY -= $rowHeight;
+            }
+
+            // 6. Page Footer
+            $stream[] = "0.886 0.910 0.941 RG 1 w 40 40 m 802 40 l S";
+            $stream[] = "BT /F1 8 Tf 0.392 0.455 0.545 rg 40 28 Td (Secure360 Enterprise Workforce Platform  |  Official Operational Analytics) Tj ET";
             $stream[] = "BT /F2 8 Tf 0.145 0.388 0.921 rg 740 28 Td (Page " . $pageNum . " of " . $totalPages . ") Tj ET";
 
             $pageStreams[] = implode("\n", $stream);
