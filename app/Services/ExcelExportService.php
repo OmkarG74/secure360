@@ -96,6 +96,31 @@ class ExcelExportService
     }
 
     /**
+     * Export operational report to a valid Excel (.xlsx) workbook
+     */
+    public function exportOperationalReport(string $reportType, array $records, array $meta = []): void
+    {
+        $reportTypeSlug = str_replace('_', '-', $reportType);
+        $filename = 'secure360-' . $reportTypeSlug . '-report-' . date('Y-m-d_His') . '.xlsx';
+
+        $files = [];
+        $files['[Content_Types].xml'] = $this->getContentTypesXml(2);
+        $files['_rels/.rels'] = $this->getRootRelsXml();
+        $files['docProps/app.xml'] = $this->getAppPropsXml();
+        $files['docProps/core.xml'] = $this->getCorePropsXml();
+        $files['xl/workbook.xml'] = $this->getWorkbookXml([
+            ['name' => 'Report Data', 'id' => 1, 'rId' => 'rId1'],
+            ['name' => 'Export Information', 'id' => 2, 'rId' => 'rId2'],
+        ]);
+        $files['xl/_rels/workbook.xml.rels'] = $this->getWorkbookRelsXml(2);
+        $files['xl/styles.xml'] = $this->getStylesXml();
+        $files['xl/worksheets/sheet1.xml'] = $this->getOperationalReportSheetXml($reportType, $records);
+        $files['xl/worksheets/sheet2.xml'] = $this->getOperationalMetaSheetXml($meta, count($records));
+
+        $this->streamXlsx($filename, $files);
+    }
+
+    /**
      * Stream the assembled files as an OpenXML (.xlsx) attachment
      */
     private function streamXlsx(string $filename, array $files): void
@@ -745,6 +770,290 @@ class ExcelExportService
         $xml .= '    <row r="1" ht="26" customHeight="1">' . "\n";
         $xml .= '      <c r="A1" t="inlineStr" s="1"><is><t>Property</t></is></c>' . "\n";
         $xml .= '      <c r="B1" t="inlineStr" s="1"><is><t>Export Metadata Information</t></is></c>' . "\n";
+        $xml .= '    </row>' . "\n";
+
+        $rowNum = 2;
+        foreach ($info as $item) {
+            $xml .= '    <row r="' . $rowNum . '" ht="20" customHeight="1">' . "\n";
+            $xml .= '      <c r="A' . $rowNum . '" t="inlineStr" s="2"><is><t>' . $this->cleanXml($item[0]) . '</t></is></c>' . "\n";
+            $xml .= '      <c r="B' . $rowNum . '" t="inlineStr" s="0"><is><t>' . $this->cleanXml($item[1]) . '</t></is></c>' . "\n";
+            $xml .= '    </row>' . "\n";
+            $rowNum++;
+        }
+
+        $xml .= '  </sheetData>' . "\n";
+        $xml .= '</worksheet>';
+        return $xml;
+    }
+
+    /**
+     * Sheet 1: Operational Report Data
+     */
+    private function getOperationalReportSheetXml(string $reportType, array $records): string
+    {
+        // Define columns and widths based on report type
+        switch ($reportType) {
+            case 'contracts':
+                $columns = [
+                    ['title' => 'Contract Code', 'width' => 16],
+                    ['title' => 'Client Name', 'width' => 26],
+                    ['title' => 'Duty Site', 'width' => 26],
+                    ['title' => 'Start Date', 'width' => 14],
+                    ['title' => 'End Date', 'width' => 14],
+                    ['title' => 'Guard Limit', 'width' => 14],
+                    ['title' => 'Assigned Guards', 'width' => 16],
+                    ['title' => 'Status', 'width' => 16],
+                ];
+                break;
+
+            case 'shifts':
+                $columns = [
+                    ['title' => 'Date', 'width' => 14],
+                    ['title' => 'Shift Name', 'width' => 20],
+                    ['title' => 'Client Name', 'width' => 24],
+                    ['title' => 'Duty Site', 'width' => 24],
+                    ['title' => 'Scheduled Time', 'width' => 18],
+                    ['title' => 'Guard Name', 'width' => 22],
+                    ['title' => 'Check-In', 'width' => 12],
+                    ['title' => 'Check-Out', 'width' => 12],
+                    ['title' => 'Shift Status', 'width' => 16],
+                ];
+                break;
+
+            case 'sites_clients':
+                $columns = [
+                    ['title' => 'Date', 'width' => 14],
+                    ['title' => 'Client Name', 'width' => 24],
+                    ['title' => 'Duty Site', 'width' => 24],
+                    ['title' => 'Site Status', 'width' => 14],
+                    ['title' => 'Guard Name', 'width' => 22],
+                    ['title' => 'Badge ID', 'width' => 14],
+                    ['title' => 'Shift', 'width' => 18],
+                    ['title' => 'Check-In', 'width' => 12],
+                    ['title' => 'Check-Out', 'width' => 12],
+                    ['title' => 'Attendance Status', 'width' => 18],
+                ];
+                break;
+
+            case 'guards':
+                $columns = [
+                    ['title' => 'Date', 'width' => 14],
+                    ['title' => 'Guard Name', 'width' => 22],
+                    ['title' => 'Badge ID', 'width' => 14],
+                    ['title' => 'Duty Site', 'width' => 24],
+                    ['title' => 'Client Name', 'width' => 24],
+                    ['title' => 'Shift', 'width' => 18],
+                    ['title' => 'Assignment', 'width' => 16],
+                    ['title' => 'Check-In', 'width' => 12],
+                    ['title' => 'Check-Out', 'width' => 12],
+                    ['title' => 'Attendance Status', 'width' => 18],
+                ];
+                break;
+
+            case 'attendance':
+                $columns = [
+                    ['title' => 'Date', 'width' => 14],
+                    ['title' => 'Guard Name', 'width' => 22],
+                    ['title' => 'Badge ID', 'width' => 14],
+                    ['title' => 'Client Name', 'width' => 24],
+                    ['title' => 'Duty Site', 'width' => 24],
+                    ['title' => 'Shift', 'width' => 18],
+                    ['title' => 'Scheduled Time', 'width' => 18],
+                    ['title' => 'Check-In', 'width' => 12],
+                    ['title' => 'Check-Out', 'width' => 12],
+                    ['title' => 'Attendance Status', 'width' => 18],
+                    ['title' => 'GPS Status', 'width' => 20],
+                ];
+                break;
+
+            case 'all_operations':
+            default:
+                $columns = [
+                    ['title' => 'Date', 'width' => 14],
+                    ['title' => 'Guard Name', 'width' => 22],
+                    ['title' => 'Badge ID', 'width' => 14],
+                    ['title' => 'Client Name', 'width' => 24],
+                    ['title' => 'Duty Site', 'width' => 24],
+                    ['title' => 'Shift', 'width' => 18],
+                    ['title' => 'Scheduled Time', 'width' => 18],
+                    ['title' => 'Check-In', 'width' => 12],
+                    ['title' => 'Check-Out', 'width' => 12],
+                    ['title' => 'GPS Verification', 'width' => 20],
+                    ['title' => 'Attendance Status', 'width' => 18],
+                    ['title' => 'Shift Status', 'width' => 16],
+                ];
+                break;
+        }
+
+        $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n";
+        $xml .= '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' . "\n";
+        $xml .= '  <sheetViews><sheetView tabSelected="1" workbookViewId="0"/></sheetViews>' . "\n";
+        $xml .= '  <sheetFormatPr defaultRowHeight="18"/>' . "\n";
+
+        // Column widths
+        $xml .= '  <cols>' . "\n";
+        foreach ($columns as $idx => $col) {
+            $colNum = $idx + 1;
+            $xml .= '    <col min="' . $colNum . '" max="' . $colNum . '" width="' . $col['width'] . '" customWidth="1"/>' . "\n";
+        }
+        $xml .= '  </cols>' . "\n";
+
+        $xml .= '  <sheetData>' . "\n";
+
+        // Header Row (Row 1, style 1)
+        $xml .= '    <row r="1" ht="26" customHeight="1">' . "\n";
+        foreach ($columns as $idx => $col) {
+            $colLetter = $this->getColumnLetter($idx + 1);
+            $xml .= '      <c r="' . $colLetter . '1" t="inlineStr" s="1"><is><t>' . $this->cleanXml($col['title']) . '</t></is></c>' . "\n";
+        }
+        $xml .= '    </row>' . "\n";
+
+        // Data Rows
+        $rowNum = 2;
+        foreach ($records as $row) {
+            switch ($reportType) {
+                case 'contracts':
+                    $rowValues = [
+                        (string)($row['contract_code'] ?? ''),
+                        (string)($row['customer_name'] ?? '—'),
+                        (string)($row['site_name'] ?? 'Multiple Sites'),
+                        (string)($row['start_date'] ?? ''),
+                        (string)($row['end_date'] ?? 'Ongoing'),
+                        (string)($row['guard_limit'] ?? 0),
+                        (string)($row['assigned_guards'] ?? 0),
+                        (string)($row['status_label'] ?? 'Active'),
+                    ];
+                    break;
+
+                case 'shifts':
+                    $rowValues = [
+                        (string)($row['date'] ?? '—'),
+                        (string)($row['shift_name'] ?? '—'),
+                        (string)($row['customer_name'] ?? '—'),
+                        (string)($row['site_name'] ?? '—'),
+                        (string)($row['scheduled_time'] ?? '—'),
+                        (string)($row['guard_name'] ?? '—'),
+                        (string)($row['check_in'] ?? '—'),
+                        (string)($row['check_out'] ?? '—'),
+                        (string)($row['shift_status'] ?? '—'),
+                    ];
+                    break;
+
+                case 'sites_clients':
+                    $rowValues = [
+                        (string)($row['date'] ?? '—'),
+                        (string)($row['customer_name'] ?? '—'),
+                        (string)($row['site_name'] ?? '—'),
+                        (string)($row['site_status_label'] ?? 'Active'),
+                        (string)($row['guard_name'] ?? '—'),
+                        (string)($row['guard_badge'] ?? '—'),
+                        (string)($row['shift_name'] ?? '—'),
+                        (string)($row['check_in'] ?? '—'),
+                        (string)($row['check_out'] ?? '—'),
+                        (string)($row['attendance_status'] ?? '—'),
+                    ];
+                    break;
+
+                case 'guards':
+                    $rowValues = [
+                        (string)($row['date'] ?? '—'),
+                        (string)($row['guard_name'] ?? '—'),
+                        (string)($row['guard_badge'] ?? '—'),
+                        (string)($row['site_name'] ?? '—'),
+                        (string)($row['customer_name'] ?? '—'),
+                        (string)($row['shift_name'] ?? '—'),
+                        (string)($row['assignment_status_label'] ?? 'Assigned'),
+                        (string)($row['check_in'] ?? '—'),
+                        (string)($row['check_out'] ?? '—'),
+                        (string)($row['attendance_status'] ?? '—'),
+                    ];
+                    break;
+
+                case 'attendance':
+                    $rowValues = [
+                        (string)($row['date'] ?? '—'),
+                        (string)($row['guard_name'] ?? '—'),
+                        (string)($row['guard_badge'] ?? '—'),
+                        (string)($row['customer_name'] ?? '—'),
+                        (string)($row['site_name'] ?? '—'),
+                        (string)($row['shift_name'] ?? '—'),
+                        (string)($row['scheduled_time'] ?? '—'),
+                        (string)($row['check_in'] ?? '—'),
+                        (string)($row['check_out'] ?? '—'),
+                        (string)($row['attendance_status'] ?? '—'),
+                        (string)($row['gps_status'] ?? '—'),
+                    ];
+                    break;
+
+                case 'all_operations':
+                default:
+                    $rowValues = [
+                        (string)($row['date'] ?? '—'),
+                        (string)($row['guard_name'] ?? '—'),
+                        (string)($row['guard_badge'] ?? '—'),
+                        (string)($row['customer_name'] ?? '—'),
+                        (string)($row['site_name'] ?? '—'),
+                        (string)($row['shift_name'] ?? '—'),
+                        (string)($row['scheduled_time'] ?? '—'),
+                        (string)($row['check_in'] ?? '—'),
+                        (string)($row['check_out'] ?? '—'),
+                        (string)($row['gps_status'] ?? '—'),
+                        (string)($row['attendance_status'] ?? '—'),
+                        (string)($row['shift_status'] ?? '—'),
+                    ];
+                    break;
+            }
+
+            $xml .= '    <row r="' . $rowNum . '" ht="20" customHeight="1">' . "\n";
+            foreach ($rowValues as $colIdx => $val) {
+                $colLetter = $this->getColumnLetter($colIdx + 1);
+                $xml .= '      <c r="' . $colLetter . $rowNum . '" t="inlineStr" s="0"><is><t>' . $this->cleanXml($val) . '</t></is></c>' . "\n";
+            }
+            $xml .= '    </row>' . "\n";
+            $rowNum++;
+        }
+
+        $xml .= '  </sheetData>' . "\n";
+        $xml .= '</worksheet>';
+        return $xml;
+    }
+
+    /**
+     * Sheet 2: Operational Report Metadata Information
+     */
+    private function getOperationalMetaSheetXml(array $meta, int $totalCount): string
+    {
+        $info = [
+            ['Report Title', $meta['report_title'] ?? 'Secure360 - Operational Report'],
+            ['Organisation', $meta['organization_name'] ?? 'Apex Security'],
+            ['Report Type', $meta['report_type_label'] ?? 'All Operations'],
+            ['Date Preset Applied', $meta['preset_label'] ?? 'This Month'],
+            ['Date Range', ($meta['from_date'] ?? '—') . ' to ' . ($meta['to_date'] ?? '—')],
+            ['Client Filter', $meta['client_name'] ?? 'All Clients'],
+            ['Site Filter', $meta['site_name'] ?? 'All Sites'],
+            ['Guard Filter', $meta['guard_name'] ?? 'All Guards'],
+            ['Status Filter', $meta['status_label'] ?? 'All'],
+            ['Search Query Applied', !empty($meta['search']) ? $meta['search'] : 'None'],
+            ['Total Records Exported', (string)$totalCount],
+            ['Generated At', date('d-M-y h:i A')],
+            ['Generated By', $meta['generated_by'] ?? 'Admin'],
+        ];
+
+        $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n";
+        $xml .= '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' . "\n";
+        $xml .= '  <sheetViews><sheetView tabSelected="0" workbookViewId="0"/></sheetViews>' . "\n";
+        $xml .= '  <sheetFormatPr defaultRowHeight="18"/>' . "\n";
+
+        $xml .= '  <cols>' . "\n";
+        $xml .= '    <col min="1" max="1" width="28" customWidth="1"/>' . "\n";
+        $xml .= '    <col min="2" max="2" width="45" customWidth="1"/>' . "\n";
+        $xml .= '  </cols>' . "\n";
+
+        $xml .= '  <sheetData>' . "\n";
+
+        $xml .= '    <row r="1" ht="26" customHeight="1">' . "\n";
+        $xml .= '      <c r="A1" t="inlineStr" s="1"><is><t>Property</t></is></c>' . "\n";
+        $xml .= '      <c r="B1" t="inlineStr" s="1"><is><t>Filter &amp; Audit Metadata Information</t></is></c>' . "\n";
         $xml .= '    </row>' . "\n";
 
         $rowNum = 2;
