@@ -92,19 +92,6 @@ $requiredGuards = max(1, (int)($contract['required_guard_count'] ?? 4));
                         <label class="form-label">Contract Notes / Special Instructions</label>
                         <textarea name="extra_notes" class="form-control" rows="3" placeholder="24/7 security, night patrol, access control, client requests, etc."><?= e($contract['extra_notes'] ?? '') ?></textarea>
                     </div>
-
-                    <!-- Primary Site / Location -->
-                    <div class="form-group">
-                        <label class="form-label">Assigned Primary Site <span class="required-star">*</span></label>
-                        <select name="site_id" id="siteSelect" class="form-select" required onchange="onContractSiteChange()">
-                            <option value="">-- Select Site --</option>
-                            <?php foreach ($sites as $s): ?>
-                                <option value="<?= $s['id'] ?>" data-customer="<?= $s['customer_id'] ?>" <?= ((int)($contract['site_id'] ?? 0) === (int)$s['id']) ? 'selected' : '' ?>>
-                                    <?= e($s['site_name']) ?> (<?= e($s['site_code']) ?>)
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
                 </div>
             </div>
 
@@ -239,57 +226,28 @@ function onRequiredGuardsChange() {
 }
 
 function onCustomerChange() {
-    const customerId = document.getElementById('customerSelect').value;
-    const siteSelect = document.getElementById('siteSelect');
-    const options = siteSelect.querySelectorAll('option');
-
-    let firstMatch = '';
-    options.forEach(opt => {
-        if (!opt.value) return;
-        if (!customerId || opt.getAttribute('data-customer') === customerId) {
-            opt.style.display = '';
-            if (!firstMatch) firstMatch = opt.value;
-        } else {
-            opt.style.display = 'none';
-        }
-    });
-
-    if (siteSelect.selectedOptions[0] && siteSelect.selectedOptions[0].style.display === 'none') {
-        siteSelect.value = firstMatch || '';
-    }
-
-    onContractSiteChange();
     updateAllRowSiteDropdowns();
-}
-
-function onContractSiteChange() {
-    const contractSiteId = document.getElementById('siteSelect').value;
-    const rowSiteSelects = document.querySelectorAll('.assignment-site-select');
-    rowSiteSelects.forEach(sel => {
-        if (!sel.value && contractSiteId) {
-            sel.value = contractSiteId;
-        }
-    });
 }
 
 function updateAllRowSiteDropdowns() {
     const customerId = document.getElementById('customerSelect').value;
-    const contractSiteId = document.getElementById('siteSelect').value;
     const rowSiteSelects = document.querySelectorAll('.assignment-site-select');
 
     rowSiteSelects.forEach(sel => {
         const options = sel.querySelectorAll('option');
+        let firstMatch = '';
         options.forEach(opt => {
             if (!opt.value) return;
             if (!customerId || opt.getAttribute('data-customer') === customerId) {
                 opt.style.display = '';
+                if (!firstMatch) firstMatch = opt.value;
             } else {
                 opt.style.display = 'none';
             }
         });
 
-        if (!sel.value && contractSiteId) {
-            sel.value = contractSiteId;
+        if (sel.selectedOptions[0] && sel.selectedOptions[0].style.display === 'none') {
+            sel.value = firstMatch || '';
         }
     });
 }
@@ -315,8 +273,7 @@ function addGuardRow(presetData = null) {
     if (endVal && endVal.length > 5) endVal = endVal.substring(0, 5);
 
     const customerId = document.getElementById('customerSelect').value;
-    const contractSiteId = document.getElementById('siteSelect').value;
-    const siteVal = presetData && (presetData.site_id || presetData.assignment_site_id) ? String(presetData.site_id || presetData.assignment_site_id) : contractSiteId;
+    const siteVal = presetData && (presetData.site_id || presetData.assignment_site_id) ? String(presetData.site_id || presetData.assignment_site_id) : '';
 
     // Guard dropdown options
     let guardOptions = `<option value="" data-base-label="-- Select Guard --">-- Select Guard --</option>`;

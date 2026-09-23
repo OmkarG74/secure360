@@ -867,6 +867,42 @@ function initAttendanceMap() {
     // Default center fallback (Pune, Maharashtra)
     const defaultCenter = [73.8567, 18.5204]; // NOTE: [longitude, latitude] for Ola Maps / MapLibre
 
+    // Calculate dynamic initial center from available duty sites and guard locations
+    const initialCoords = [];
+    RAW_DUTY_SITES.forEach(s => {
+        if (s.latitude !== null && s.longitude !== null) {
+            const lat = parseFloat(s.latitude);
+            const lng = parseFloat(s.longitude);
+            if (!isNaN(lat) && !isNaN(lng)) initialCoords.push([lng, lat]);
+        }
+    });
+    RAW_GUARD_LOCATIONS.forEach(g => {
+        if (g.latitude !== null && g.longitude !== null) {
+            const lat = parseFloat(g.latitude);
+            const lng = parseFloat(g.longitude);
+            if (!isNaN(lat) && !isNaN(lng)) initialCoords.push([lng, lat]);
+        }
+    });
+
+    let initialCenter = defaultCenter;
+    let initialZoom = 12;
+    if (initialCoords.length === 1) {
+        initialCenter = initialCoords[0];
+        initialZoom = 14;
+    } else if (initialCoords.length > 1) {
+        let minLng = initialCoords[0][0], maxLng = initialCoords[0][0];
+        let minLat = initialCoords[0][1], maxLat = initialCoords[0][1];
+        for (let i = 1; i < initialCoords.length; i++) {
+            const lng = initialCoords[i][0];
+            const lat = initialCoords[i][1];
+            if (lng < minLng) minLng = lng;
+            if (lng > maxLng) maxLng = lng;
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+        }
+        initialCenter = [(minLng + maxLng) / 2, (minLat + maxLat) / 2];
+    }
+
     try {
         olaMapsClient = new OlaMaps({
             apiKey: OLA_MAPS_API_KEY
@@ -880,8 +916,8 @@ function initAttendanceMap() {
         mapInstance = olaMapsClient.init({
             style: "https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json",
             container: 'attendanceMap',
-            center: defaultCenter,
-            zoom: 12
+            center: initialCenter, // Dynamically computed from real Secure360 data
+            zoom: initialZoom
         });
     } catch (e) {
         console.error('[Secure360] Error rendering Ola Map:', e);
@@ -1198,6 +1234,12 @@ function fitMapBounds() {
     const activeCoords = getVisibleMapCoordinates();
 
     if (activeCoords.length === 0) {
+        if (typeof mapInstance.setCenter === 'function') {
+            mapInstance.setCenter(defaultCenter);
+        }
+        if (typeof mapInstance.setZoom === 'function') {
+            mapInstance.setZoom(11);
+        }
         return;
     }
 
