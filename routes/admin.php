@@ -63,6 +63,7 @@ $router->group([
 
     // 5. Attendance & Real-Time Tracking
     $router->get('/attendance', [AttendanceController::class, 'index']);
+    $router->get('/attendance/ajax/filter-options', [AttendanceController::class, 'ajaxFilterOptions']);
     $router->get('/attendance/{id}', [AttendanceController::class, 'show']);
 
     // 6. Operational Reports & Telemetry

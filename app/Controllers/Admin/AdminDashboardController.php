@@ -96,7 +96,9 @@ class AdminDashboardController extends Controller
         $stmtSites->execute(['org_id' => $orgId]);
         $dutySites = $stmtSites->fetchAll(PDO::FETCH_ASSOC);
 
-        // 9. Guard Live Locations for Map
+        // 9. Guard Live Locations for Map (Today's current operational positions only)
+        $todayMidnight = date('Y-m-d 00:00:00');
+
         $stmtLive = $db->prepare(
             "SELECT gll.id, gll.guard_id, gll.latitude, gll.longitude, gll.accuracy_meters, gll.address, gll.recorded_at,
                     u.full_name as guard_name, u.employee_code as guard_badge,
@@ -106,6 +108,7 @@ class AdminDashboardController extends Controller
                  SELECT MAX(id) as max_id
                  FROM guard_live_locations
                  WHERE organization_id = :org_id
+                   AND recorded_at >= :today_midnight
                  GROUP BY guard_id
              ) latest
              JOIN guard_live_locations gll ON gll.id = latest.max_id
@@ -114,13 +117,15 @@ class AdminDashboardController extends Controller
              LEFT JOIN attendance att ON gll.attendance_id = att.id
              LEFT JOIN sites s ON att.site_id = s.id"
         );
-        $stmtLive->execute(['org_id' => $orgId]);
+        $stmtLive->execute(['org_id' => $orgId, 'today_midnight' => $todayMidnight]);
         $liveRows = $stmtLive->fetchAll(PDO::FETCH_ASSOC);
 
         $stmtAttLoc = $db->prepare(
             "SELECT att.id as attendance_id, att.guard_id, 
-                    att.check_in_latitude as latitude, att.check_in_longitude as longitude, 
-                    att.check_in_address as address, att.check_in_at as recorded_at,
+                    COALESCE(att.check_out_latitude, att.check_in_latitude) as latitude, 
+                    COALESCE(att.check_out_longitude, att.check_in_longitude) as longitude, 
+                    COALESCE(att.check_out_address, att.check_in_address) as address, 
+                    COALESCE(att.check_out_at, att.check_in_at) as recorded_at,
                     att.status as attendance_status, att.check_in_at, att.check_out_at,
                     u.full_name as guard_name, u.employee_code as guard_badge,
                     s.site_name, s.site_code
@@ -128,8 +133,8 @@ class AdminDashboardController extends Controller
                  SELECT MAX(id) as max_id
                  FROM attendance
                  WHERE organization_id = :org_id
-                   AND check_in_latitude IS NOT NULL 
-                   AND check_in_longitude IS NOT NULL
+                   AND check_in_at >= :today_midnight
+                   AND (check_in_latitude IS NOT NULL OR check_out_latitude IS NOT NULL)
                  GROUP BY guard_id
              ) latest
              JOIN attendance att ON att.id = latest.max_id
@@ -137,7 +142,7 @@ class AdminDashboardController extends Controller
              JOIN users u ON g.user_id = u.id
              LEFT JOIN sites s ON att.site_id = s.id"
         );
-        $stmtAttLoc->execute(['org_id' => $orgId]);
+        $stmtAttLoc->execute(['org_id' => $orgId, 'today_midnight' => $todayMidnight]);
         $attLocRows = $stmtAttLoc->fetchAll(PDO::FETCH_ASSOC);
 
         $guardLocations = [];
