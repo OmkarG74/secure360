@@ -100,13 +100,25 @@ class NotificationController extends Controller
     /**
      * Mark a single notification as read (popover API)
      */
-    public function markRead(string|int $id, Request $request = null, Response $response = null): void
+    public function markRead(mixed $request = null, mixed $response = null, array $params = []): void
     {
         $userId = Auth::id() ?? 0;
         $orgId = Auth::organisationId() ?? 1;
-        $notifId = (int)$id;
 
-        $this->notificationModel->markAsReadForAdmin($notifId, $userId, $orgId);
+        $notifId = 0;
+        if (!empty($params['id']) && is_numeric($params['id'])) {
+            $notifId = (int)$params['id'];
+        } elseif ($this->request && is_numeric($this->request->param('id'))) {
+            $notifId = (int)$this->request->param('id');
+        } elseif ($this->request && is_numeric($this->request->input('id'))) {
+            $notifId = (int)$this->request->input('id');
+        } elseif (is_numeric($request)) {
+            $notifId = (int)$request;
+        }
+
+        if ($notifId > 0) {
+            $this->notificationModel->markAsReadForAdmin($notifId, $userId, $orgId);
+        }
         $unreadCount = $this->notificationModel->getUnreadCountForAdmin($userId, $orgId);
 
         $this->json([
@@ -252,7 +264,13 @@ class NotificationController extends Controller
                     return;
                 }
 
-                $this->setFlash('success', 'Alert successfully sent to the selected guard.');
+                if (!empty($res['push_success'])) {
+                    $this->setFlash('success', 'Alert sent successfully.');
+                } elseif (($res['fcm_status']['total_devices'] ?? 0) === 0) {
+                    $this->setFlash('warning', 'Notification saved, but the guard has no active registered device.');
+                } else {
+                    $this->setFlash('warning', 'Notification saved, but push delivery failed.');
+                }
             } elseif ($sendTo === 'multiple') {
                 $guardIds = is_array($multipleGuardIds) ? array_map('intval', $multipleGuardIds) : [];
                 $guardIds = array_filter($guardIds, fn($id) => $id > 0);
@@ -264,11 +282,17 @@ class NotificationController extends Controller
                 }
 
                 $res = NotificationService::sendToGuards($guardIds, $title, $message, $alertType, $data, $options);
-                $this->setFlash('success', "Alert dispatched to {$res['successful_dispatches']} guard(s).");
+                $pushCount = $res['push_successful'] ?? 0;
+                if ($pushCount > 0) {
+                    $this->setFlash('success', "Alert dispatched to {$res['successful_dispatches']} guard(s) ({$pushCount} received push).");
+                } else {
+                    $this->setFlash('warning', "Notification saved for {$res['successful_dispatches']} guard(s), but push delivery failed or no devices were active.");
+                }
             } else {
                 // Send to ALL guards in organisation
                 $res = NotificationService::sendToRole('guard', $orgId, $title, $message, $alertType, $data, $options);
-                $this->setFlash('success', "Alert successfully broadcast to all active guards ({$res['successful_dispatches']} sent).");
+                $pushCount = $res['push_successful'] ?? ($res['successful_dispatches'] ?? 0);
+                $this->setFlash('success', "Alert successfully broadcast to all active guards ({$res['successful_dispatches']} saved).");
             }
 
             $this->redirect('/admin/notifications/manage');
@@ -314,16 +338,18 @@ class NotificationController extends Controller
             return;
         }
 
+        $flashType = !empty($res['push_success']) ? 'success' : 'warning';
         if ($isAjax) {
             $this->json([
                 'success' => true,
+                'push_success' => !empty($res['push_success']),
                 'message' => $res['message'],
                 'data' => $res,
             ]);
             return;
         }
 
-        $this->setFlash('success', $res['message']);
+        $this->setFlash($flashType, $res['message']);
         $this->redirect('/admin/notifications/manage');
     }
 

@@ -265,7 +265,7 @@ class ContractController extends Controller
             // Centralized Notification: Dispatch assignment notification to assigned guards
             try {
                 $siteModel = new Site();
-                $siteData = $siteModel->findById($siteId);
+                $siteData = $siteModel->find($siteId);
                 $siteName = $siteData['site_name'] ?? 'Assigned Site';
 
                 foreach ($assignments as $row) {
@@ -697,7 +697,7 @@ class ContractController extends Controller
             // Centralized Notification: Dispatch update notification to active guards
             try {
                 $siteModel = new Site();
-                $siteData = $siteModel->findById($siteId);
+                $siteData = $siteModel->find($siteId);
                 $siteName = $siteData['site_name'] ?? 'Assigned Site';
 
                 foreach ($assignments as $row) {
