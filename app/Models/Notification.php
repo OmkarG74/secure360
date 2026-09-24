@@ -333,7 +333,11 @@ class Notification extends Model
             ]);
 
             $res = $fcmService->sendToUser($userId, $title, $message, $pushData);
-            if ($res['total_devices'] > 0 && $res['sent_count'] === 0) {
+            if ($res['total_devices'] === 0) {
+                $deliveryStatus = 'stored_only';
+            } elseif ($res['sent_count'] > 0) {
+                $deliveryStatus = 'sent';
+            } else {
                 $deliveryStatus = 'failed';
             }
         } catch (\Throwable $e) {

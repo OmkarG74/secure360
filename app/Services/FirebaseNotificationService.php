@@ -140,6 +140,7 @@ class FirebaseNotificationService
         array $data = []
     ): array {
         $tokens = $this->deviceTokenModel->getActiveTokensByUser($userId);
+        error_log("[FirebaseNotificationService] Device count for user {$userId}: " . count($tokens));
         if (empty($tokens)) {
             return [
                 'total_devices' => 0,
@@ -282,7 +283,7 @@ class FirebaseNotificationService
             $jsonPayload = json_encode($messagePayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
             $ch = curl_init();
-            curl_setopt_array($ch, [
+            $curlOptions = [
                 CURLOPT_URL => $url,
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $jsonPayload,
@@ -294,7 +295,15 @@ class FirebaseNotificationService
                     'Content-Type: application/json; UTF-8',
                 ],
                 CURLOPT_SSL_VERIFYPEER => true,
-            ]);
+                CURLOPT_SSL_VERIFYHOST => 2,
+            ];
+
+            $caBundle = $this->resolveCaBundlePath();
+            if ($caBundle !== null) {
+                $curlOptions[CURLOPT_CAINFO] = $caBundle;
+            }
+
+            curl_setopt_array($ch, $curlOptions);
 
             $response = curl_exec($ch);
             $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -314,6 +323,8 @@ class FirebaseNotificationService
             $decoded = json_decode($response, true) ?: [];
 
             if ($httpCode >= 200 && $httpCode < 300) {
+                $msgId = $decoded['name'] ?? 'none';
+                error_log("[FirebaseNotificationService] FCM HTTP {$httpCode} success: message_id={$msgId}");
                 return [
                     'success' => true,
                     'message_id' => $decoded['name'] ?? null,
@@ -346,7 +357,7 @@ class FirebaseNotificationService
                 $isUnregistered = true;
             }
 
-            error_log("[FCM] HTTP {$httpCode} Error: {$errorMessage} (Status: {$errorCode})");
+            error_log("[FirebaseNotificationService] FCM HTTP {$httpCode} error: {$errorMessage} (code: {$errorCode})");
 
             return [
                 'success' => false,
@@ -426,7 +437,7 @@ class FirebaseNotificationService
         ]);
 
         $ch = curl_init();
-        curl_setopt_array($ch, [
+        $curlOptions = [
             CURLOPT_URL => self::OAUTH_TOKEN_URI,
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $postData,
@@ -437,7 +448,15 @@ class FirebaseNotificationService
                 'Content-Type: application/x-www-form-urlencoded',
             ],
             CURLOPT_SSL_VERIFYPEER => true,
-        ]);
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ];
+
+        $caBundle = $this->resolveCaBundlePath();
+        if ($caBundle !== null) {
+            $curlOptions[CURLOPT_CAINFO] = $caBundle;
+        }
+
+        curl_setopt_array($ch, $curlOptions);
 
         $response = curl_exec($ch);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -451,11 +470,13 @@ class FirebaseNotificationService
         $tokenData = json_decode($response, true);
         if ($httpCode !== 200 || empty($tokenData['access_token'])) {
             $errorDesc = $tokenData['error_description'] ?? ($tokenData['error'] ?? 'Unknown OAuth error');
+            error_log("[FirebaseNotificationService] OAuth2 failure: {$errorDesc} (HTTP {$httpCode})");
             throw new \RuntimeException("Google OAuth2 token error ({$httpCode}): {$errorDesc}");
         }
 
         $accessToken = (string)$tokenData['access_token'];
         $expiresIn = (int)($tokenData['expires_in'] ?? 3600);
+        error_log("[FirebaseNotificationService] OAuth2 success: token obtained for project {$sa['project_id']}");
 
         // Cache the token
         $cacheDir = dirname($this->cacheFile);
@@ -563,5 +584,40 @@ class FirebaseNotificationService
     private function base64UrlEncode(string $data): string
     {
         return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+    }
+
+    /**
+     * Resolves a valid CA certificate bundle path for secure cURL SSL verification.
+     * 1. If PHP's curl.cainfo or openssl.cafile is explicitly set and readable, returns null (PHP handles it natively).
+     * 2. Otherwise, detects known valid local CA bundles (e.g. storage/credentials/cacert.pem or WAMP phpMyAdmin bundle).
+     * 3. Returns null on standard Linux/Debian environments where system CAs (/etc/ssl/certs/) are used automatically.
+     */
+    private function resolveCaBundlePath(): ?string
+    {
+        // 1. If PHP already has a configured and readable CA bundle, rely on it natively
+        $iniCurlCa = (string)ini_get('curl.cainfo');
+        if ($iniCurlCa !== '' && file_exists($iniCurlCa) && is_readable($iniCurlCa)) {
+            return null;
+        }
+
+        $iniOpensslCa = (string)ini_get('openssl.cafile');
+        if ($iniOpensslCa !== '' && file_exists($iniOpensslCa) && is_readable($iniOpensslCa)) {
+            return null;
+        }
+
+        // 2. Candidate paths on local Windows / WAMP environments
+        $candidates = [
+            $this->projectRoot . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'credentials' . DIRECTORY_SEPARATOR . 'cacert.pem',
+            'C:\\wamp64\\apps\\phpmyadmin5.2.3\\vendor\\composer\\ca-bundle\\res\\cacert.pem',
+            'C:\\wamp64\\bin\\php\\cacert.pem',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (file_exists($candidate) && is_readable($candidate) && filesize($candidate) > 10000) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 }

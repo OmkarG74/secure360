@@ -129,3 +129,6 @@ Thumbs.db
 
 # Firebase Admin SDK credentials
 /storage/credentials/
+
+# Google Service Configuration file FIREBASE Android
+/mobile/android/app/google-services.json

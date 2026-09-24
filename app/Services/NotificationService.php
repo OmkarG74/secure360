@@ -92,6 +92,7 @@ class NotificationService
             'data_json' => $json,
         ]);
         $notificationId = (int)$db->lastInsertId();
+        error_log("[NotificationService] DB notification created #{$notificationId} for user {$userId} (type: {$type})");
 
         // Ensure data_json in database contains notification_id and initial acknowledgement flag
         $data['notification_id'] = (string)$notificationId;
@@ -128,11 +129,26 @@ class NotificationService
 
             // Update delivery status in database
             $deliveryStatus = 'sent';
-            if ($fcmStatus['total_devices'] > 0 && $fcmStatus['sent_count'] === 0) {
-                $deliveryStatus = 'failed';
-            } elseif ($fcmStatus['total_devices'] === 0) {
+            $pushSuccess = false;
+            $statusMessage = 'Alert sent successfully.';
+
+            if ($fcmStatus['total_devices'] === 0) {
                 // No devices registered; database notification stored
+                $deliveryStatus = 'stored_only';
+                $pushSuccess = false;
+                $statusMessage = 'Notification saved, but guard has no active registered device.';
+                error_log("[NotificationService] User {$userId} has no registered device tokens; push skipped.");
+            } elseif ($fcmStatus['sent_count'] > 0) {
                 $deliveryStatus = 'sent';
+                $pushSuccess = true;
+                $statusMessage = $fcmStatus['failed_count'] > 0
+                    ? "Notification delivered to {$fcmStatus['sent_count']} of {$fcmStatus['total_devices']} device(s)."
+                    : "Alert sent successfully.";
+            } else {
+                // Registered devices exist but all FCM dispatches failed
+                $deliveryStatus = 'failed';
+                $pushSuccess = false;
+                $statusMessage = 'Notification saved, but push delivery failed.';
             }
 
             $upStmt = $db->prepare("UPDATE notifications SET delivery_status = :status WHERE id = :id");
@@ -140,6 +156,9 @@ class NotificationService
         } catch (\Throwable $e) {
             // FCM failure is non-fatal; log securely without exposing sensitive tokens
             error_log("[NotificationService] FCM delivery failed for user {$userId}: " . $e->getMessage());
+            $deliveryStatus = 'failed';
+            $pushSuccess = false;
+            $statusMessage = 'Notification saved, but push delivery failed.';
 
             try {
                 $upStmt = $db->prepare("UPDATE notifications SET delivery_status = 'failed' WHERE id = :id");
@@ -151,8 +170,11 @@ class NotificationService
 
         return [
             'success' => true,
+            'push_success' => $pushSuccess,
+            'delivery_status' => $deliveryStatus,
             'notification_id' => $notificationId,
             'fcm_status' => $fcmStatus,
+            'message' => $statusMessage,
         ];
     }
 
@@ -264,6 +286,7 @@ class NotificationService
 
         $results = [];
         $successful = 0;
+        $pushSuccessful = 0;
 
         foreach ($guards as $guard) {
             $guardOptions = $options;
@@ -273,11 +296,15 @@ class NotificationService
             if ($res['success']) {
                 $successful++;
             }
+            if (!empty($res['push_success'])) {
+                $pushSuccessful++;
+            }
         }
 
         return [
             'total_guards' => count($guardIds),
             'successful_dispatches' => $successful,
+            'push_successful' => $pushSuccessful,
             'results' => $results,
         ];
     }
@@ -473,6 +500,7 @@ class NotificationService
         $totalDevices = (int)($fcm['total_devices'] ?? 0);
         $sentCount = (int)($fcm['sent_count'] ?? 0);
 
+        $pushSuccess = ($sentCount > 0);
         if ($totalDevices === 0) {
             $statusMessage = 'Wake-up notification recorded, but the Guard has no active registered device.';
         } elseif ($sentCount > 0) {
@@ -483,6 +511,7 @@ class NotificationService
 
         return [
             'success' => true,
+            'push_success' => $pushSuccess,
             'notification_id' => $notifId,
             'guard_name' => $guardName,
             'total_devices' => $totalDevices,
