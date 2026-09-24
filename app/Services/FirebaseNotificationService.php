@@ -25,6 +25,7 @@ class FirebaseNotificationService
     private const WAKEUP_ANDROID_CHANNEL_ID = 'secure360_wakeup';
 
     private ?array $serviceAccount = null;
+    private ?string $credentialSource = null;
     private string $projectRoot;
     private string $cacheFile;
     private UserDeviceToken $deviceTokenModel;
@@ -509,9 +510,27 @@ class FirebaseNotificationService
     }
 
     /**
-     * Load and validate the Firebase service-account JSON
+     * Safe diagnostic method returning ONLY the credential source identifier:
+     * 'environment_json', 'environment_file', or 'local_file'.
+     * Never exposes any credential contents or secrets.
+     */
+    public function getCredentialSource(): string
+    {
+        if ($this->credentialSource === null) {
+            $this->getServiceAccount();
+        }
+
+        return (string)$this->credentialSource;
+    }
+
+    /**
+     * Load and validate Firebase service-account credentials according to resolution order:
+     * 1. FIREBASE_CREDENTIALS_JSON (raw JSON string in environment variable)
+     * 2. FIREBASE_CREDENTIALS (path to a readable JSON file)
+     * 3. Local fallback (storage/credentials/*.json)
      *
      * @return array<string, mixed>
+     * @throws \RuntimeException
      */
     private function getServiceAccount(): array
     {
@@ -519,24 +538,134 @@ class FirebaseNotificationService
             return $this->serviceAccount;
         }
 
-        $relPath = (string)(getenv('FIREBASE_CREDENTIALS') ?: 'storage/credentials/infipre360-firebase-adminsdk-fbsvc-2de9932d5b.json');
-        $fullPath = $this->resolvePath($relPath);
+        // -------------------------------------------------------------------------
+        // 1. FIREBASE_CREDENTIALS_JSON
+        // -------------------------------------------------------------------------
+        $hasEnvJson = (getenv('FIREBASE_CREDENTIALS_JSON') !== false)
+            || array_key_exists('FIREBASE_CREDENTIALS_JSON', $_ENV)
+            || array_key_exists('FIREBASE_CREDENTIALS_JSON', $_SERVER);
 
-        if (!file_exists($fullPath)) {
-            throw new \RuntimeException("Firebase credentials file not found: {$relPath}");
+        if ($hasEnvJson) {
+            $rawJson = getenv('FIREBASE_CREDENTIALS_JSON');
+            if ($rawJson === false) {
+                $rawJson = $_ENV['FIREBASE_CREDENTIALS_JSON'] ?? ($_SERVER['FIREBASE_CREDENTIALS_JSON'] ?? '');
+            }
+
+            $trimmed = trim((string)$rawJson);
+            if ($trimmed === '') {
+                throw new \RuntimeException('FIREBASE_CREDENTIALS_JSON environment variable is present but empty.');
+            }
+
+            $decoded = json_decode($trimmed, true);
+            if (!is_array($decoded)) {
+                throw new \RuntimeException('FIREBASE_CREDENTIALS_JSON environment variable is not valid JSON.');
+            }
+
+            $requiredFields = ['type', 'project_id', 'private_key', 'client_email'];
+            $missingFields = [];
+            foreach ($requiredFields as $field) {
+                if (!isset($decoded[$field]) || !is_string($decoded[$field]) || trim($decoded[$field]) === '') {
+                    $missingFields[] = $field;
+                }
+            }
+
+            if (!empty($missingFields)) {
+                throw new \RuntimeException(
+                    'FIREBASE_CREDENTIALS_JSON is missing required service account field(s): ' . implode(', ', $missingFields)
+                );
+            }
+
+            if (str_contains($decoded['private_key'], '\n') && !str_contains($decoded['private_key'], "\n")) {
+                $decoded['private_key'] = str_replace('\n', "\n", $decoded['private_key']);
+            }
+
+            $this->credentialSource = 'environment_json';
+            $this->serviceAccount = $decoded;
+            error_log("[FirebaseNotificationService] Credential source: {$this->credentialSource}");
+            return $this->serviceAccount;
         }
 
-        $content = file_get_contents($fullPath);
+        // -------------------------------------------------------------------------
+        // 2. FIREBASE_CREDENTIALS (file path)
+        // -------------------------------------------------------------------------
+        $hasEnvFile = (getenv('FIREBASE_CREDENTIALS') !== false && trim((string)getenv('FIREBASE_CREDENTIALS')) !== '')
+            || (!empty($_ENV['FIREBASE_CREDENTIALS']) && trim((string)$_ENV['FIREBASE_CREDENTIALS']) !== '')
+            || (!empty($_SERVER['FIREBASE_CREDENTIALS']) && trim((string)$_SERVER['FIREBASE_CREDENTIALS']) !== '');
+
+        if ($hasEnvFile) {
+            $relPath = (string)(getenv('FIREBASE_CREDENTIALS') ?: ($_ENV['FIREBASE_CREDENTIALS'] ?? $_SERVER['FIREBASE_CREDENTIALS']));
+            $relPath = trim($relPath);
+            $fullPath = $this->resolvePath($relPath);
+
+            if (!file_exists($fullPath)) {
+                throw new \RuntimeException("Firebase credentials file not found: {$relPath}");
+            }
+
+            if (!is_readable($fullPath)) {
+                throw new \RuntimeException("Cannot read Firebase credentials file: {$relPath}");
+            }
+
+            $content = file_get_contents($fullPath);
+            if ($content === false) {
+                throw new \RuntimeException("Cannot read Firebase credentials file: {$relPath}");
+            }
+
+            $decoded = json_decode($content, true);
+            if (!is_array($decoded) || empty($decoded['project_id']) || empty($decoded['private_key'])) {
+                throw new \RuntimeException("Invalid or incomplete Firebase service account JSON: {$relPath}");
+            }
+
+            if (isset($decoded['private_key']) && is_string($decoded['private_key']) && str_contains($decoded['private_key'], '\n') && !str_contains($decoded['private_key'], "\n")) {
+                $decoded['private_key'] = str_replace('\n', "\n", $decoded['private_key']);
+            }
+
+            $this->credentialSource = 'environment_file';
+            $this->serviceAccount = $decoded;
+            error_log("[FirebaseNotificationService] Credential source: {$this->credentialSource}");
+            return $this->serviceAccount;
+        }
+
+        // -------------------------------------------------------------------------
+        // 3. Existing local fallback: storage/credentials/*.json
+        // -------------------------------------------------------------------------
+        $defaultRelative = 'storage/credentials/infipre360-firebase-adminsdk-fbsvc-2de9932d5b.json';
+        $defaultPath = $this->resolvePath($defaultRelative);
+
+        $localFile = null;
+        if (file_exists($defaultPath) && is_readable($defaultPath)) {
+            $localFile = $defaultPath;
+        } else {
+            $pattern = $this->projectRoot . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'credentials' . DIRECTORY_SEPARATOR . '*.json';
+            $matches = glob($pattern) ?: [];
+            foreach ($matches as $match) {
+                if (is_file($match) && is_readable($match)) {
+                    $localFile = $match;
+                    break;
+                }
+            }
+        }
+
+        if ($localFile === null) {
+            throw new \RuntimeException('No Firebase credentials found. Set FIREBASE_CREDENTIALS_JSON or FIREBASE_CREDENTIALS, or place credentials in storage/credentials/.');
+        }
+
+        $content = file_get_contents($localFile);
         if ($content === false) {
-            throw new \RuntimeException("Cannot read Firebase credentials file: {$relPath}");
+            throw new \RuntimeException('Cannot read Firebase credentials file: ' . basename($localFile));
         }
 
         $decoded = json_decode($content, true);
         if (!is_array($decoded) || empty($decoded['project_id']) || empty($decoded['private_key'])) {
-            throw new \RuntimeException("Invalid or incomplete Firebase service account JSON: {$relPath}");
+            throw new \RuntimeException('Invalid or incomplete Firebase service account JSON: ' . basename($localFile));
         }
 
+        if (isset($decoded['private_key']) && is_string($decoded['private_key']) && str_contains($decoded['private_key'], '\n') && !str_contains($decoded['private_key'], "\n")) {
+            $decoded['private_key'] = str_replace('\n', "\n", $decoded['private_key']);
+        }
+
+        $this->credentialSource = 'local_file';
         $this->serviceAccount = $decoded;
+        error_log("[FirebaseNotificationService] Credential source: {$this->credentialSource}");
         return $this->serviceAccount;
     }
 
