@@ -20,7 +20,7 @@ class FirebaseNotificationService
     private const OAUTH_TOKEN_URI = 'https://oauth2.googleapis.com/token';
     private const FCM_AUTH_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
     private const FCM_V1_SEND_URL = 'https://fcm.googleapis.com/v1/projects/%s/messages:send';
-    private const DEFAULT_ANDROID_CHANNEL_ID = 'secure360_notifications';
+    private const DEFAULT_ANDROID_CHANNEL_ID = 'secure360_notifications_v2';
 
     private const WAKEUP_ANDROID_CHANNEL_ID = 'secure360_wakeup';
 
@@ -291,6 +291,7 @@ class FirebaseNotificationService
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
                 CURLOPT_HTTPHEADER => [
                     'Authorization: Bearer ' . $accessToken,
                     'Content-Type: application/json; UTF-8',
@@ -445,6 +446,7 @@ class FirebaseNotificationService
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 10,
             CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
             CURLOPT_HTTPHEADER => [
                 'Content-Type: application/x-www-form-urlencoded',
             ],

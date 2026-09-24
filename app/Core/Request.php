@@ -82,6 +82,16 @@ class Request
             }
         }
 
+        // Fallback for HTTP_* headers in $_SERVER
+        foreach ($serverData as $key => $value) {
+            if (str_starts_with($key, 'HTTP_')) {
+                $headerName = strtolower(str_replace('_', '-', substr($key, 5)));
+                if (!isset($headers[$headerName])) {
+                    $headers[$headerName] = (string)$value;
+                }
+            }
+        }
+
         // Fallback for Apache Authorization header if not picked up by getallheaders
         if (!isset($headers['authorization'])) {
             if (isset($serverData['HTTP_AUTHORIZATION'])) {
