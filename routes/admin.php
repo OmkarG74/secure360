@@ -44,7 +44,11 @@ $router->group([
     $router->post('/clients/{id}/edit', [ClientSiteController::class, 'updateClient']);
     $router->post('/clients/{id}/delete', [ClientSiteController::class, 'deleteClient']);
     $router->post('/clients/{id}/sites', [ClientSiteController::class, 'addSiteToClient']);
+    $router->post('/sites/{id}/update', [ClientSiteController::class, 'updateSite']);
     $router->post('/sites/{id}/delete', [ClientSiteController::class, 'deleteSite']);
+    $router->get('/geocode/autocomplete', [ClientSiteController::class, 'autocomplete']);
+    $router->get('/geocode/details', [ClientSiteController::class, 'placeDetails']);
+    $router->get('/geocode', [ClientSiteController::class, 'geocode']);
 
     // 3. Guards Roster & Management (Strictly NO checkboxes on tables)
     $router->get('/guards', [GuardController::class, 'index']);

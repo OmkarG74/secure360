@@ -330,6 +330,76 @@ class ClientSiteController extends Controller
     }
 
     /**
+     * Update an existing site record
+     */
+    public function updateSite(Request $request = null, Response $response = null, array $params = []): void
+    {
+        $orgId = Auth::organisationId() ?? 1;
+        $siteId = (int)($params['id'] ?? 0);
+
+        $siteModel = new Site();
+        $site = $siteModel->findByTenant($siteId, $orgId);
+
+        if (!$site) {
+            if ($this->request->isAjax() || str_contains($this->request->header('Accept', ''), 'application/json')) {
+                $this->json(['success' => false, 'message' => 'Site not found.'], 404);
+                return;
+            }
+            $this->setFlash('error', 'Site not found.');
+            $this->redirect('/admin/clients-sites');
+            return;
+        }
+
+        $siteName = trim((string)$this->request->input('site_name', ''));
+        if ($siteName === '') {
+            if ($this->request->isAjax() || str_contains($this->request->header('Accept', ''), 'application/json')) {
+                $this->json(['success' => false, 'message' => 'Site name is required.'], 400);
+                return;
+            }
+            $this->setFlash('error', 'Site name is required.');
+            $this->redirect("/admin/clients/{$site['customer_id']}/edit");
+            return;
+        }
+
+        $siteCode = trim((string)$this->request->input('site_code', '')) ?: $site['site_code'];
+        $siteAddress = trim((string)$this->request->input('site_address', '')) ?: null;
+        $zoneGate = trim((string)$this->request->input('zone_gate', '')) ?: null;
+        $latInput = $this->request->input('latitude');
+        $lngInput = $this->request->input('longitude');
+        $latitude = ($latInput !== null && $latInput !== '') ? (float)$latInput : null;
+        $longitude = ($lngInput !== null && $lngInput !== '') ? (float)$lngInput : null;
+
+        $siteModel->update($siteId, [
+            'site_name' => $siteName,
+            'site_code' => $siteCode,
+            'site_address' => $siteAddress,
+            'zone_gate' => $zoneGate,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+        ]);
+
+        if ($this->request->isAjax() || str_contains($this->request->header('Accept', ''), 'application/json')) {
+            $this->json([
+                'success' => true,
+                'message' => "Site '{$siteName}' updated successfully.",
+                'site' => [
+                    'id' => $siteId,
+                    'site_name' => $siteName,
+                    'site_code' => $siteCode,
+                    'site_address' => $siteAddress,
+                    'zone_gate' => $zoneGate,
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
+                ]
+            ]);
+            return;
+        }
+
+        $this->setFlash('success', "Site '{$siteName}' updated successfully.");
+        $this->redirect("/admin/clients/{$site['customer_id']}/edit");
+    }
+
+    /**
      * Delete site
      */
     public function deleteSite(Request $request = null, Response $response = null, array $params = []): void
@@ -340,11 +410,282 @@ class ClientSiteController extends Controller
         $siteModel = new Site();
         $site = $siteModel->findByTenant($siteId, $orgId);
 
-        if ($site) {
-            $siteModel->softDelete($siteId);
-            $this->setFlash('success', "Site '{$site['site_name']}' removed.");
+        if (!$site) {
+            if ($this->request->isAjax() || str_contains($this->request->header('Accept', ''), 'application/json')) {
+                $this->json(['success' => false, 'message' => 'Site not found.'], 404);
+                return;
+            }
+            $this->setFlash('error', 'Site not found.');
+            $this->redirect('/admin/clients-sites');
+            return;
+        }
+
+        $siteModel->softDelete($siteId);
+        $this->setFlash('success', "Site '{$site['site_name']}' removed.");
+
+        if ($this->request->isAjax() || str_contains($this->request->header('Accept', ''), 'application/json')) {
+            $this->json([
+                'success' => true,
+                'message' => "Site '{$site['site_name']}' removed successfully.",
+                'site_id' => $siteId
+            ]);
+            return;
+        }
+
+        if (!empty($site['customer_id'])) {
+            $this->redirect("/admin/clients/{$site['customer_id']}/edit");
+            return;
         }
 
         $this->redirect('/admin/clients-sites');
+    }
+
+    /**
+     * Ola Maps Places Autocomplete proxy
+     */
+    public function autocomplete(): void
+    {
+        $input = trim((string)($this->request->query('input') ?? $this->request->input('input', '')));
+
+        if (mb_strlen($input) < 3) {
+            $this->json([
+                'success' => false,
+                'message' => 'Minimum 3 characters required.',
+                'predictions' => [],
+            ], 400);
+            return;
+        }
+
+        $apiKey = config('app.maps.ola_api_key') ?: getenv('OLA_MAPS_API_KEY') ?: ($_ENV['OLA_MAPS_API_KEY'] ?? '');
+        if (empty($apiKey)) {
+            $this->json([
+                'success' => false,
+                'message' => 'Ola Maps API key is not configured.',
+                'predictions' => [],
+            ], 500);
+            return;
+        }
+
+        $queryParams = [
+            'input' => $input,
+            'api_key' => $apiKey,
+            'language' => 'en',
+        ];
+
+        // Optional location bias if provided (lat,lng)
+        $location = trim((string)($this->request->query('location') ?? $this->request->input('location', '')));
+        if ($location !== '' && preg_match('/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/', $location)) {
+            $queryParams['location'] = $location;
+        }
+
+        $url = 'https://api.olamaps.io/places/v1/autocomplete?' . http_build_query($queryParams);
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json',
+            ],
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError || $httpCode !== 200 || empty($response)) {
+            $this->json([
+                'success' => false,
+                'message' => 'Unable to fetch autocomplete suggestions.',
+                'predictions' => [],
+            ]);
+            return;
+        }
+
+        $data = json_decode((string)$response, true);
+        $rawPredictions = $data['predictions'] ?? $data['results'] ?? [];
+        $cleanPredictions = [];
+
+        foreach ($rawPredictions as $p) {
+            $placeId = $p['place_id'] ?? null;
+            if (!$placeId) {
+                continue;
+            }
+
+            $mainText = $p['structured_formatting']['main_text'] ?? $p['name'] ?? $p['description'] ?? '';
+            $secondaryText = $p['structured_formatting']['secondary_text'] ?? '';
+            $description = $p['description'] ?? trim($mainText . ($secondaryText ? ', ' . $secondaryText : ''));
+
+            $cleanPredictions[] = [
+                'place_id' => $placeId,
+                'description' => $description,
+                'main_text' => $mainText ?: $description,
+                'secondary_text' => $secondaryText,
+            ];
+        }
+
+        $this->json([
+            'success' => true,
+            'predictions' => $cleanPredictions,
+        ]);
+    }
+
+    /**
+     * Ola Maps Place Details proxy
+     */
+    public function placeDetails(): void
+    {
+        $placeId = trim((string)($this->request->query('place_id') ?? $this->request->input('place_id', '')));
+
+        if ($placeId === '') {
+            $this->json([
+                'success' => false,
+                'message' => 'place_id is required.',
+            ], 400);
+            return;
+        }
+
+        $apiKey = config('app.maps.ola_api_key') ?: getenv('OLA_MAPS_API_KEY') ?: ($_ENV['OLA_MAPS_API_KEY'] ?? '');
+        if (empty($apiKey)) {
+            $this->json([
+                'success' => false,
+                'message' => 'Ola Maps API key is not configured.',
+            ], 500);
+            return;
+        }
+
+        $queryParams = [
+            'place_id' => $placeId,
+            'api_key' => $apiKey,
+            'language' => 'en',
+        ];
+
+        $url = 'https://api.olamaps.io/places/v1/details?' . http_build_query($queryParams);
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json',
+            ],
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError || $httpCode !== 200 || empty($response)) {
+            $this->json([
+                'success' => false,
+                'message' => 'Unable to fetch place details.',
+            ]);
+            return;
+        }
+
+        $data = json_decode((string)$response, true);
+        $result = $data['result'] ?? ($data['results'][0] ?? null);
+
+        $location = $result['geometry']['location'] ?? null;
+        if (!$location || !isset($location['lat']) || !isset($location['lng'])) {
+            $this->json([
+                'success' => false,
+                'message' => 'Coordinates not found for this place.',
+            ]);
+            return;
+        }
+
+        $formattedAddress = $result['formatted_address'] ?? $result['name'] ?? '';
+
+        $this->json([
+            'success' => true,
+            'place_id' => $placeId,
+            'formatted_address' => $formattedAddress,
+            'latitude' => round((float)$location['lat'], 7),
+            'longitude' => round((float)$location['lng'], 7),
+        ]);
+    }
+
+    /**
+     * Geocode an address using Ola Maps Geocoding API securely from the backend
+     */
+    public function geocode(): void
+    {
+        $address = trim((string)($this->request->query('address') ?? $this->request->input('address', '')));
+
+        if ($address === '') {
+            $this->json([
+                'success' => false,
+                'message' => 'Please enter an address to search.'
+            ], 400);
+            return;
+        }
+
+        $apiKey = config('app.maps.ola_api_key') ?: getenv('OLA_MAPS_API_KEY') ?: ($_ENV['OLA_MAPS_API_KEY'] ?? '');
+        if (empty($apiKey)) {
+            $this->json([
+                'success' => false,
+                'message' => 'Unable to find coordinates for this address.'
+            ], 500);
+            return;
+        }
+
+        $url = 'https://api.olamaps.io/places/v1/geocode?address=' . urlencode($address) . '&api_key=' . urlencode($apiKey);
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json',
+            ],
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError || $httpCode !== 200 || empty($response)) {
+            $this->json([
+                'success' => false,
+                'message' => 'Unable to find coordinates for this address.'
+            ]);
+            return;
+        }
+
+        $data = json_decode((string)$response, true);
+        $location = null;
+
+        if (!empty($data['geocodingResults'][0]['geometry']['location'])) {
+            $location = $data['geocodingResults'][0]['geometry']['location'];
+        } elseif (!empty($data['results'][0]['geometry']['location'])) {
+            $location = $data['results'][0]['geometry']['location'];
+        }
+
+        if (!$location || !isset($location['lat']) || !isset($location['lng'])) {
+            $this->json([
+                'success' => false,
+                'message' => 'Unable to find coordinates for this address.'
+            ]);
+            return;
+        }
+
+        $this->json([
+            'success' => true,
+            'latitude' => round((float)$location['lat'], 7),
+            'longitude' => round((float)$location['lng'], 7)
+        ]);
     }
 }

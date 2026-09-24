@@ -109,7 +109,7 @@ class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
-  static const String _channelId = 'secure360_notifications';
+  static const String _channelId = 'secure360_notifications_v2';
   static const String _channelName = 'Secure360 Notifications';
   static const String _channelDesc = 'Important alerts, duty rosters, and operational notifications';
 
@@ -197,7 +197,7 @@ class NotificationService {
         _channelId,
         _channelName,
         description: _channelDesc,
-        importance: Importance.high,
+        importance: Importance.max,
         playSound: true,
         enableVibration: true,
       );
@@ -214,11 +214,16 @@ class NotificationService {
       final androidPlugin = _localNotifications
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       if (androidPlugin != null) {
+        // Clean up legacy channel so Android does not preserve old low/default importance
+        try {
+          await androidPlugin.deleteNotificationChannel('secure360_notifications');
+        } catch (_) {}
         await androidPlugin.createNotificationChannel(androidChannel);
         try {
           await androidPlugin.deleteNotificationChannel(_wakeupChannelId);
         } catch (_) {}
         await androidPlugin.createNotificationChannel(androidWakeUpChannel);
+        await androidPlugin.requestNotificationsPermission();
       }
 
       // 3. Initialize Flutter Local Notifications for foreground display
@@ -301,19 +306,22 @@ class NotificationService {
           return;
         }
 
-        if (notification != null) {
-          // Standard local notification
+        final notifTitle = notification?.title ?? data['title']?.toString() ?? (data['type'] != null ? 'Secure360 Alert' : null);
+        final notifBody = notification?.body ?? data['message']?.toString() ?? data['body']?.toString();
+
+        if (notifTitle != null || notifBody != null) {
+          // Standard local notification with heads-up popup
           _localNotifications.show(
             message.hashCode,
-            notification.title ?? 'Secure360 Alert',
-            notification.body ?? '',
+            notifTitle ?? 'Secure360 Alert',
+            notifBody ?? '',
             const NotificationDetails(
               android: AndroidNotificationDetails(
                 _channelId,
                 _channelName,
                 channelDescription: _channelDesc,
-                importance: Importance.high,
-                priority: Priority.high,
+                importance: Importance.max,
+                priority: Priority.max,
                 icon: '@mipmap/ic_launcher',
                 playSound: true,
                 enableVibration: true,
@@ -324,8 +332,8 @@ class NotificationService {
 
           // Show in-app overlay banner while the app is active
           _showInAppBanner(
-            title: notification.title ?? 'Secure360 Alert',
-            body: notification.body ?? '',
+            title: notifTitle ?? 'Secure360 Alert',
+            body: notifBody ?? '',
             data: message.data,
           );
         }
