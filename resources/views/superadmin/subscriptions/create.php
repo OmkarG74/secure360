@@ -511,7 +511,7 @@ $preselectedOrgId = (int)($preselectedOrgId ?? 0);
                         </a>
                         <button type="submit" class="btn btn-primary" id="btnCreateSub" style="display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; padding: 0.55rem 1.5rem; font-size: 0.8125rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(37,99,235,0.25);">
                             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
-                            <span>+ Create Subscription</span>
+                            <span> Create Subscription</span>
                         </button>
                     </div>
                 </div>

@@ -218,7 +218,7 @@ $orgId = (int)($org['id'] ?? 0);
             <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <button type="button" class="btn btn-primary" onclick="openAddAdminModal()" style="font-weight: 600; font-size: 0.8125rem; padding: 0.4rem 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem;">
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
-                    <span>+ Add Admin</span>
+                    <span> Add Admin</span>
                 </button>
                 <a href="<?= url('/superadmin/organisations/' . $orgId . '/edit') ?>" class="btn btn-outline" style="font-weight: 600; font-size: 0.8125rem; text-decoration: none; padding: 0.4rem 0.85rem;">
                     Manage in Edit &rarr;

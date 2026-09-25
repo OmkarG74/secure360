@@ -17,7 +17,6 @@ $sites = $client['sites'] ?? [];
     <div class="page-header">
         <div>
             <h1 class="page-header-title">Edit Client</h1>
-            <p class="page-header-desc">Manage company profile, contact details, and registered security sites.</p>
         </div>
     </div>
 

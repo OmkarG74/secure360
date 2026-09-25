@@ -22,7 +22,6 @@ $existingAssignments = $existingAssignments ?? [];
     <div class="page-header">
         <div>
             <h1 class="page-header-title">Create Contract</h1>
-            <p class="page-header-desc">Enter contract details and assign guards to sites and shifts.</p>
         </div>
     </div>
 
@@ -42,7 +41,6 @@ $existingAssignments = $existingAssignments ?? [];
                         </div>
                         <div>
                             <h2 class="card-section-title">Contract Details</h2>
-                            <p class="card-section-desc">Primary contract parameters and coverage specifications.</p>
                         </div>
                     </div>
                 </div>
@@ -100,7 +98,6 @@ $existingAssignments = $existingAssignments ?? [];
                         </div>
                         <div>
                             <h2 class="card-section-title">Guard Assignments</h2>
-                            <p class="card-section-desc">Assign available personnel to site posts and active shifts.</p>
                         </div>
                     </div>
                     <button type="button" id="btnAddGuardTop" class="btn btn-primary btn-sm" onclick="addGuardRow()" style="white-space: nowrap; height: 36px; padding: 0 1rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.4rem;">

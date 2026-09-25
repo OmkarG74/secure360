@@ -460,14 +460,11 @@ $currency = $currency ?? 'INR';
     <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
         <div>
             <h1 class="page-header-title">Subscriptions</h1>
-            <p style="font-size: 0.8125rem; color: #64748b; margin-top: 0.25rem;">
-                Manage organisation subscriptions and guard capacity.
-            </p>
         </div>
         <div>
             <a href="<?= url('/superadmin/subscriptions/create') ?>" class="btn btn-primary" id="btnAddSubscription" style="display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; text-decoration: none; padding: 0 1rem; height: 38px; font-size: 0.8125rem; border-radius: 8px; white-space: nowrap; box-shadow: 0 1px 2px rgba(37,99,235,0.2);">
                 <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
-                <span>+ Add Subscription</span>
+                <span> Add Subscription</span>
             </a>
         </div>
     </div>

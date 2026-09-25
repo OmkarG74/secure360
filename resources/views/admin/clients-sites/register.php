@@ -16,8 +16,7 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
     <!-- Page Header -->
     <div class="page-header">
         <div>
-            <h1 class="page-header-title">Register Client</h1>
-            <p class="page-header-desc">Enter client account details and register one or more physical site posts.</p>
+            <h1 class="page-header-title"style="margin-bottom: 20px;">Register Client</h1>
         </div>
     </div>
 
@@ -35,7 +34,6 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
                         </div>
                         <div>
                             <h2 class="card-section-title">Client Information</h2>
-                            <p class="card-section-desc">Primary billing and corporate entity details.</p>
                         </div>
                     </div>
                 </div>
@@ -114,7 +112,6 @@ $generatedCode = $generatedCode ?? 'CLT-' . strtoupper(substr(bin2hex(random_byt
                         </div>
                         <div>
                             <h2 class="card-section-title">Assigned Sites</h2>
-                            <p class="card-section-desc">Physical posts &amp; geofenced patrol sites.</p>
                         </div>
                     </div>
                     <button type="button" id="btnAddSite" class="btn btn-outline btn-sm" style="color: #2563eb; border-color: #bfdbfe; background: #eff6ff;">
