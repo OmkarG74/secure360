@@ -17,7 +17,6 @@ $generatedCode = $generatedCode ?? 'ORG-' . strtoupper(substr(bin2hex(random_byt
     <div class="page-header">
         <div>
             <h1 class="page-header-title">Onboard New Tenant Organisation</h1>
-            <p class="page-header-desc">Create a new customer tenant entity and provision administrator access. Subscriptions are configured separately in the Subscriptions module.</p>
         </div>
     </div>
 

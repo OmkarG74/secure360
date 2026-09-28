@@ -24,9 +24,6 @@ $searchQuery = $filters['search'] ?? '';
     <div class="page-header" style="margin-bottom: 1.5rem;">
         <div>
             <h1 class="page-header-title" style="margin: 0;">Alerts &amp; Notices</h1>
-            <p class="page-header-desc" style="margin: 0.35rem 0 0 0; color: #64748b; font-size: 0.875rem;">
-                Manage real-time guard alerts and operational notifications.
-            </p>
         </div>
     </div>
 

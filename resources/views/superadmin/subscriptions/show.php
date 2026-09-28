@@ -280,9 +280,6 @@ $orgAddress = !empty($sub['organization_address']) ? $sub['organization_address'
     <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
         <div>
             <h1 class="page-header-title" style="margin: 0;">Subscription Details</h1>
-            <p style="font-size: 0.8125rem; color: #64748b; margin-top: 0.25rem;">
-                Complete information about this subscription
-            </p>
         </div>
 
         <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">

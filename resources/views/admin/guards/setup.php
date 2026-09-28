@@ -23,7 +23,6 @@ $hasPhoto = !empty($guard['photo_url']);
     <div class="page-header">
         <div>
             <h1 class="page-header-title"><?= e($pageTitleText) ?></h1>
-            <p class="page-header-desc"><?= $isEdit ? 'Update guard account and assignment details.' : 'Register guard profile, upload photo credentials, and provision mobile app login.' ?></p>
         </div>
     </div>
 
@@ -38,7 +37,6 @@ $hasPhoto = !empty($guard['photo_url']);
             <div style="display: flex; flex-direction: column; gap: 1.5rem;">
                 <div class="card" style="padding: 1.75rem; text-align: center;">
                     <h3 style="font-size: 0.9375rem; font-weight: 600; color: #0f172a; margin-bottom: 0.25rem;">Portrait Photo</h3>
-                    <p style="font-size: 0.8125rem; color: #64748b; margin-bottom: 1.25rem;">Used for facial verification &amp; ID badge.</p>
 
                     <!-- Dropzone Area -->
                     <div id="dropzoneContainer" style="border: 2px dashed #cbd5e1; border-radius: 12px; padding: 2rem 1rem; background: #f8fafc; cursor: pointer; transition: all 0.2s ease; position: relative;" onclick="document.getElementById('guardPhotoInput').click();">
@@ -77,7 +75,6 @@ $hasPhoto = !empty($guard['photo_url']);
                     </div>
                     <div>
                         <h3 style="font-size: 1.0625rem; font-weight: 600; color: #0f172a;">Guard Credentials &amp; Profile</h3>
-                        <p style="font-size: 0.8125rem; color: #64748b;">Credentials are used to authenticate on the Secure360 Flutter app.</p>
                     </div>
                 </div>
 

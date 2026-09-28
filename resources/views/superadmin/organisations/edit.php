@@ -20,7 +20,6 @@ $orgStatus = (int)($org['status'] ?? 0);
     <div class="page-header">
         <div>
             <h1 class="page-header-title">Edit Organisation &bull; <?= e($org['name']) ?></h1>
-            <p class="page-header-desc">Update tenant organization details, manage existing administrator credentials, and provision new administrators.</p>
         </div>
     </div>
 
@@ -98,7 +97,7 @@ $orgStatus = (int)($org['status'] ?? 0);
                     </div>
                     <button type="button" class="btn btn-outline" onclick="addNewAdminSection()" style="font-weight: 600; font-size: 0.8125rem; padding: 0.35rem 0.75rem; display: inline-flex; align-items: center; gap: 0.35rem; color: #2563eb; border-color: #cbd5e1; background: #ffffff;">
                         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
-                        <span>+ Add Admin</span>
+                        <span> Add Admin</span>
                     </button>
                 </div>
 
@@ -181,7 +180,7 @@ $orgStatus = (int)($org['status'] ?? 0);
                 <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
                     <button type="button" class="btn btn-outline" onclick="addNewAdminSection()" style="font-weight: 600; font-size: 0.8125rem; display: inline-flex; align-items: center; gap: 0.35rem; color: #2563eb; border-color: #cbd5e1; background: #ffffff;">
                         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
-                        <span>+ Add Another Admin</span>
+                        <span> Add Another Admin</span>
                     </button>
                     <span style="font-size: 0.75rem; color: #64748b;" id="newAdminNotice"></span>
                 </div>
