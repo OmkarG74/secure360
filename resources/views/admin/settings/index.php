@@ -51,7 +51,7 @@ $activeTab = $activeTab ?? 'account';
             <!-- 1. ACCOUNT SETTINGS -->
             <div id="tab-account" class="settings-tab-pane <?= $activeTab === 'account' ? 'active' : '' ?>">
                 <h2 class="settings-section-title">Account Settings</h2>
-                <p class="settings-section-desc">Manage your administrator profile, contact details, and account identity.</p>
+                <p class="settings-section-desc">   </p>
 
                 <form method="POST" action="<?= url('/admin/settings') ?>">
                     <?= csrf_field() ?>
@@ -92,18 +92,14 @@ $activeTab = $activeTab ?? 'account';
 
                             <!-- Email (Read-Only) -->
                             <div class="form-group">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.375rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0rem;">
                                     <label class="form-label" style="margin-bottom: 0;">Login Email Address</label>
-                                    <span style="font-size: 0.7rem; color: #64748b; background: #f1f5f9; padding: 0.15rem 0.5rem; border-radius: 4px; border: 1px solid #e2e8f0; font-weight: 500; display: inline-flex; align-items: center; gap: 0.25rem;">
-                                        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-                                        Read-Only
-                                    </span>
                                 </div>
                                 <div class="input-icon-wrapper">
                                     <svg class="input-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                                     <input type="email" class="form-control" value="<?= e($user['email'] ?? '') ?>" readonly style="background: #f8fafc; color: #475569; cursor: not-allowed;" title="Login email cannot be modified directly.">
                                 </div>
-                                <span style="font-size: 0.725rem; color: #64748b; margin-top: 0.25rem; display: block;">Primary account login identity. Cannot be modified directly.</span>
+                                
                             </div>
                         </div>
 
@@ -129,7 +125,7 @@ $activeTab = $activeTab ?? 'account';
             <!-- 2. SECURITY SETTINGS -->
             <div id="tab-security" class="settings-tab-pane <?= $activeTab === 'security' ? 'active' : '' ?>">
                 <h2 class="settings-section-title">Security Settings</h2>
-                <p class="settings-section-desc">Manage account password, access authentication, and session security.</p>
+                <p class="settings-section-desc">  </p>
 
                 <form method="POST" action="<?= url('/admin/settings') ?>">
                     <?= csrf_field() ?>
@@ -188,7 +184,7 @@ $activeTab = $activeTab ?? 'account';
             <!-- 3. ORGANISATION PROFILE -->
             <div id="tab-organisation" class="settings-tab-pane <?= $activeTab === 'organisation' ? 'active' : '' ?>">
                 <h2 class="settings-section-title">Organisation Profile</h2>
-                <p class="settings-section-desc">Manage security agency profile, registered office, and dispatch contact details.</p>
+                <p class="settings-section-desc"></p>
 
                 <form method="POST" action="<?= url('/admin/settings') ?>">
                     <?= csrf_field() ?>
@@ -214,12 +210,9 @@ $activeTab = $activeTab ?? 'account';
 
                         <div class="settings-grid-2">
                             <div class="form-group">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.375rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0;">
                                     <label class="form-label" style="margin-bottom: 0;">Organisation Email</label>
-                                    <span style="font-size: 0.7rem; color: #64748b; background: #f1f5f9; padding: 0.15rem 0.5rem; border-radius: 4px; border: 1px solid #e2e8f0; font-weight: 500; display: inline-flex; align-items: center; gap: 0.25rem;">
-                                        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-                                        Read-Only
-                                    </span>
+                                   
                                 </div>
                                 <div class="input-icon-wrapper">
                                     <svg class="input-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
@@ -251,56 +244,15 @@ $activeTab = $activeTab ?? 'account';
             <!-- 4. NOTIFICATIONS -->
             <div id="tab-notifications" class="settings-tab-pane <?= $activeTab === 'notifications' ? 'active' : '' ?>">
                 <h2 class="settings-section-title">Notification Preferences</h2>
-                <p class="settings-section-desc">Configure automated operational alerts, attendance events, and guard telemetry feeds.</p>
+                <p class="settings-section-desc"></p>
 
                 <form method="POST" action="<?= url('/admin/settings') ?>">
                     <?= csrf_field() ?>
                     <input type="hidden" name="section" value="notifications">
 
                     <div class="settings-form-container">
+                        <span> Module under deveolpment</span>
                         
-                        <!-- Toggle 1 -->
-                        <div class="settings-toggle-row">
-                            <div class="settings-toggle-info">
-                                <div class="settings-toggle-title">Attendance &amp; Shift Alerts</div>
-                                <div class="settings-toggle-desc">Receive real-time notifications for guard check-ins, check-outs, and late arrival alerts.</div>
-                            </div>
-                            <label class="toggle-switch" aria-label="Toggle Attendance Alerts">
-                                <input type="checkbox" name="notify_attendance" value="1" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-
-                        <!-- Toggle 2 -->
-                        <div class="settings-toggle-row">
-                            <div class="settings-toggle-info">
-                                <div class="settings-toggle-title">Guard Patrol &amp; Assignment Activity</div>
-                                <div class="settings-toggle-desc">Receive notifications for duty site reallocations, emergency SOS alerts, and patrol updates.</div>
-                            </div>
-                            <label class="toggle-switch" aria-label="Toggle Guard Activity">
-                                <input type="checkbox" name="notify_guard_activity" value="1" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-
-                        <!-- Toggle 3 -->
-                        <div class="settings-toggle-row">
-                            <div class="settings-toggle-info">
-                                <div class="settings-toggle-title">System &amp; Maintenance Notices</div>
-                                <div class="settings-toggle-desc">Receive platform updates, security patches, and periodic operational summary reports.</div>
-                            </div>
-                            <label class="toggle-switch" aria-label="Toggle System Notices">
-                                <input type="checkbox" name="notify_system" value="1" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-
-                        <!-- Submit Button Row -->
-                        <div style="margin-top: 1rem; padding-top: 1.25rem; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end;">
-                            <button type="submit" class="btn btn-primary" style="padding: 0.65rem 1.75rem; font-weight: 600;">
-                                Save Preferences
-                            </button>
-                        </div>
                     </div>
                 </form>
             </div>
@@ -308,7 +260,7 @@ $activeTab = $activeTab ?? 'account';
             <!-- 5. SYSTEM & PREFERENCES -->
             <div id="tab-system" class="settings-tab-pane <?= $activeTab === 'system' ? 'active' : '' ?>">
                 <h2 class="settings-section-title">System &amp; Operations Preferences</h2>
-                <p class="settings-section-desc">Customize default timezone, date formats, map tiles, and live refresh frequencies.</p>
+                <p class="settings-section-desc"></p>
 
                 <form method="POST" action="<?= url('/admin/settings') ?>">
                     <?= csrf_field() ?>
@@ -333,8 +285,6 @@ $activeTab = $activeTab ?? 'account';
                                 <label class="form-label">Default Live Map Layer</label>
                                 <select name="map_layer" class="form-select">
                                     <option value="hybrid" selected>Satellite / Hybrid</option>
-                                    <option value="streets">OpenStreetMap Standard</option>
-                                    <option value="carto_dark">Carto Dark (High Contrast)</option>
                                 </select>
                             </div>
                         </div>
